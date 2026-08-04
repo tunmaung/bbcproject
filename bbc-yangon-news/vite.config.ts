@@ -173,11 +173,26 @@ server: {
   host: "0.0.0.0",
   port: 3000,
 
-  https: {
-    key: fs.readFileSync(path.resolve(import.meta.dirname, "cert/key.pem")),
-    cert: fs.readFileSync(path.resolve(import.meta.dirname, "cert/cert.pem")),
-  },
+server: {
+  host: "0.0.0.0",
+  port: 3000,
 
+  allowedHosts: [
+    ".manuspre.computer",
+    ".manus.computer",
+    ".manus-asia.computer",
+    ".manuscomputer.ai",
+    ".manusvm.computer",
+    "localhost",
+    "127.0.0.1",
+    "192.168.1.10",
+  ],
+
+  fs: {
+    strict: true,
+    deny: ["**/.*"],
+  },
+},
   allowedHosts: [
     ".manuspre.computer",
     ".manus.computer",

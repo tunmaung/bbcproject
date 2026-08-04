@@ -1,6 +1,6 @@
 import axios from "axios";
 import { UAParser } from "ua-parser-js";
-import { eq } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   InsertUser,
@@ -110,8 +110,8 @@ export async function listArticles(category?: string) {
       .select()
       .from(articles)
       .where(eq(articles.category, category as any))
-      .orderBy(articles.publishedAt);
-  }
+.orderBy(desc(visitorLogs.id)) 
+ }
   return db.select().from(articles).orderBy(articles.publishedAt);
 }
 
@@ -227,6 +227,7 @@ if (
 } catch (err) {
   console.error(err);
 }
+console.log("saveVisitorLocation data =", data);
 await db.insert(visitorLogs).values({
   ...data,
   country,
@@ -312,6 +313,54 @@ export async function updateAdminLastLogin(id: number) {
     })
     .where(eq(adminUsers.id, id));
 }
+export async function saveAdminTwoFactorSecret(
+  id: number,
+  secret: string
+) {
+  const db = await getDb();
+
+  if (!db) {
+    throw new Error("Database not available");
+  }
+
+  await db
+    .update(adminUsers)
+    .set({
+      twoFactorSecret: secret,
+    })
+    .where(eq(adminUsers.id, id));
+}
+
+export async function enableAdminTwoFactor(id: number) {
+  const db = await getDb();
+
+  if (!db) {
+    throw new Error("Database not available");
+  }
+
+  await db
+    .update(adminUsers)
+    .set({
+      twoFactorEnabled: true,
+    })
+    .where(eq(adminUsers.id, id));
+}
+
+export async function disableAdminTwoFactor(id: number) {
+  const db = await getDb();
+
+  if (!db) {
+    throw new Error("Database not available");
+  }
+
+  await db
+    .update(adminUsers)
+    .set({
+      twoFactorEnabled: false,
+      twoFactorSecret: null,
+    })
+    .where(eq(adminUsers.id, id));
+}
 export async function findAdminById(id: number) {
   const db = await getDb();
 
@@ -327,6 +376,7 @@ export async function findAdminById(id: number) {
 
   return result.length > 0 ? result[0] : null;
 }
+
 export async function listVisitorLocations() {
   const db = await getDb();
 
@@ -337,5 +387,5 @@ export async function listVisitorLocations() {
   return db
     .select()
     .from(visitorLogs)
-    .orderBy(visitorLogs.createdAt);
+    .orderBy(desc(visitorLogs.id));
 }

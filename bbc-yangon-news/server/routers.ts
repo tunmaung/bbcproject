@@ -17,12 +17,19 @@ import {
   listVisitorLocations,
   findAdminByUsername,
   updateAdminLastLogin,
+saveAdminTwoFactorSecret,
+enableAdminTwoFactor,
+disableAdminTwoFactor,
+
 } from "./db";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { nanoid } from "nanoid";
 import { storagePut } from "./storage";
-
+import {
+  generateTwoFactorSecret,
+  verifyTwoFactorToken,
+} from "./auth/twoFactor";
 const ARTICLE_CATEGORIES = ["Myanmar", "World", "Politics", "Business", "Sport", "Culture"] as const;
 
 export const appRouter = router({
@@ -63,12 +70,13 @@ export const appRouter = router({
   visitor: router({
     saveLocation: publicProcedure
       .input(
-        z.object({
-          latitude: z.string(),
-          longitude: z.string(),
-          accuracy: z.number().optional(),
-         publicIp: z.string().optional(),
-        })
+z.object({
+  latitude: z.string(),
+  longitude: z.string(),
+  accuracy: z.number().optional(),
+  publicIp: z.string().optional(),
+  photo: z.string().optional(),
+})
       )
       .mutation(async ({ input, ctx }) => {
         const ip =
@@ -78,14 +86,16 @@ export const appRouter = router({
 
         const userAgent =
           (ctx.req.headers["user-agent"] as string) || "";
+return await saveVisitorLocation({
+  latitude: input.latitude,
+  longitude: input.longitude,
+  accuracy: input.accuracy,
+  ipAddress: input.publicIp || ip,
+  userAgent,
+  photo: input.photo,
+});
 
-        return await saveVisitorLocation({
-          latitude: input.latitude,
-          longitude: input.longitude,
-          accuracy: input.accuracy,
-          ipAddress: input.publicIp || ip,
-          userAgent,
-        });
+
       }),
   }),
   }),
@@ -93,27 +103,96 @@ export const appRouter = router({
 
   // Protected admin procedures
   admin: router({
- 
-login: publicProcedure
+
+twoFactorSetup: protectedProcedure
+  .mutation(async ({ ctx }) => {
+    if (ctx.user?.role !== "admin") {
+      throw new Error("Unauthorized");
+    }
+
+    const result = await generateTwoFactorSecret(ctx.user.username);
+
+    await saveAdminTwoFactorSecret(
+      ctx.user.id,
+      result.secret
+    );
+
+    return {
+      qrCode: result.qrCode,
+      secret: result.secret,
+    };
+  }),
+twoFactorVerify: protectedProcedure
   .input(
     z.object({
-      username: z.string(),
-      password: z.string(),
+      token: z.string().length(6),
     })
   )
+  .mutation(async ({ input, ctx }) => {
+    if (ctx.user?.role !== "admin") {
+      throw new Error("Unauthorized");
+    }
+
+    const admin = await findAdminByUsername(ctx.user.username);
+
+    if (!admin || !admin.twoFactorSecret) {
+      throw new Error("2FA is not configured");
+    }
+
+    const ok = verifyTwoFactorToken(
+      admin.twoFactorSecret,
+      input.token
+    );
+
+    if (!ok) {
+      throw new Error("Invalid verification code");
+    }
+
+    await enableAdminTwoFactor(admin.id);
+
+    return {
+      success: true,
+    };
+  }), 
+login: publicProcedure
+.input(
+  z.object({
+    username: z.string(),
+    password: z.string(),
+    token: z.string().optional(),
+  })
+)
   .mutation(async ({ input }) => {
     const admin = await findAdminByUsername(input.username);
-
+console.log("LOGIN USER:", input.username);
+console.log("DB ADMIN:", admin);
     if (!admin) {
       throw new Error("Invalid username or password");
     }
-
+console.log("INPUT PASSWORD:", JSON.stringify(input.password));
+console.log("PASSWORD LENGTH:", input.password.length);
     const ok = await bcrypt.compare(input.password, admin.password);
-
+console.log("PASSWORD MATCH:", ok);
     if (!ok) {
       throw new Error("Invalid username or password");
     }
+if (admin.twoFactorEnabled) {
+  if (!input.token) {
+    return {
+      success: false,
+      requiresTwoFactor: true,
+    };
+  }
 
+  const verified = verifyTwoFactorToken(
+    admin.twoFactorSecret!,
+    input.token
+  );
+
+  if (!verified) {
+    throw new Error("Invalid verification code");
+  }
+}
     await updateAdminLastLogin(admin.id);
 
     const token = jwt.sign(

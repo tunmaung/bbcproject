@@ -7,10 +7,14 @@ const CATEGORIES = ["Myanmar", "World", "Politics", "Business", "Sport", "Cultur
 
 export function CategoryGrid() {
   const { data: articles, isLoading } = trpc.articles.list.useQuery({});
-
+console.log("articles =", articles);
+console.log("isLoading =", isLoading);
   if (isLoading) {
-    return (
-      <div className="container mx-auto px-4 py-12">
+return (
+    <div className="bg-yellow-300 py-12">
+      <h1 className="text-5xl text-red-600 font-bold">
+        CATEGORY GRID WORKING
+      </h1>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="animate-pulse">

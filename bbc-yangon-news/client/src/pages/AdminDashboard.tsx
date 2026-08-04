@@ -8,7 +8,9 @@ import ArticleTable from "@/components/ArticleTable";
 import VisitorMap from "@/components/VisitorMap";
 export default function AdminDashboard() {
   const [loading] = useState(false);
-
+ const [qrCode, setQrCode] = useState("");
+const [secret, setSecret] = useState("");
+const [verifyCode, setVerifyCode] = useState("");
   const user = {
     role: "admin",
   };
@@ -36,7 +38,9 @@ export default function AdminDashboard() {
     trpc.admin.visitorLocations.useQuery(undefined, {
       enabled: !!user,
     });
-
+console.log("visitorLocations =", visitorLocations);
+const setup2FA = trpc.admin.twoFactorSetup.useMutation();
+const verify2FA = trpc.admin.twoFactorVerify.useMutation();
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -75,11 +79,42 @@ export default function AdminDashboard() {
     setEditingId(null);
     toast.success("Article updated successfully!");
   };
+const handleArticleDeleted = () => {
+  refetchArticles();
+  toast.success("Article deleted successfully!");
+};
 
-  const handleArticleDeleted = () => {
-    refetchArticles();
-    toast.success("Article deleted successfully!");
-  };
+
+
+const handleEnable2FA = async () => {
+  try {
+    const result = await setup2FA.mutateAsync();
+
+    setQrCode(result.qrCode);
+    setSecret(result.secret);
+
+    toast.success("QR Code generated.");
+  } catch (err: any) {
+    toast.error(err.message);
+  }
+};
+
+const handleVerify2FA = async () => {
+  try {
+    await verify2FA.mutateAsync({
+      token: verifyCode,
+    });
+
+    toast.success("Google Authenticator Enabled!");
+
+    setQrCode("");
+    setSecret("");
+    setVerifyCode("");
+  } catch (err: any) {
+    toast.error(err.message);
+  }
+};
+
 
   return (
     <DashboardLayout>
@@ -96,7 +131,47 @@ export default function AdminDashboard() {
   View Site
 </Link>
         </div>
-        {/* Stats */}
+<div className="bg-white rounded-lg shadow p-6">
+  <h2 className="text-xl font-bold mb-4">
+    🔒 Google Authenticator
+  </h2>
+
+  {!qrCode ? (
+    <button
+      onClick={handleEnable2FA}
+      className="bg-green-600 text-white px-4 py-2 rounded"
+    >
+      Enable 2FA
+    </button>
+  ) : (
+    <>
+      <img
+        src={qrCode}
+        alt="QR Code"
+        className="w-56 h-56"
+      />
+
+      <p className="mt-3 font-mono break-all">
+        {secret}
+      </p>
+
+      <input
+        className="border rounded w-full p-2 mt-4"
+        placeholder="Enter 6 digit code"
+        value={verifyCode}
+        onChange={(e) => setVerifyCode(e.target.value)}
+      />
+
+      <button
+        onClick={handleVerify2FA}
+        className="bg-red-700 text-white px-4 py-2 rounded mt-3"
+      >
+        Verify
+      </button>
+    </>
+  )}
+</div>
+       {/* Stats */}
         {stats && (
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="bg-white p-4 rounded-lg shadow">
@@ -178,45 +253,65 @@ export default function AdminDashboard() {
         {/* Visitor Locations */}
         <div className="bg-white rounded-lg shadow p-6">
           <h2 className="text-xl font-bold mb-4">
-            Visitor Locations ({visitorLocations?.length || 0})
+
+Visitor Locations V999 ({visitorLocations?.length || 0})
           </h2>
 
           <div className="overflow-x-auto">
             <table className="min-w-full">
-              <thead>
-                <tr className="border-b">
-                  <th className="text-left p-2">IP Address</th>
-                  <th className="text-left p-2">Latitude</th>
-                  <th className="text-left p-2">Longitude</th>
-                  <th className="text-left p-2">Visited</th>
-                </tr>
-              </thead>
+<thead>
+  <tr className="border-b">
+    <th className="text-left p-2">📷 Photo</th>
+    <th className="text-left p-2">📱 Device</th>
+    <th className="text-left p-2">🌐 Browser</th>
+    <th className="text-left p-2">💻 OS</th>
+    <th className="text-left p-2">🌍 Country</th>
+<th className="text-left p-2">🏢 ISP</th>
+    <th className="text-left p-2">🏙 City</th>
+    <th className="text-left p-2">📍 Location</th>
+    <th className="text-left p-2">🌐 IP</th>
+    <th className="text-left p-2">🕒 Visited</th>
+  </tr>
+</thead>
 
-              <tbody>
-                {visitorLocations?.map((v: any) => (
-                  <tr key={v.id} className="border-b">
-                    <td className="p-2">{v.ipAddress}</td>
-                    <td className="p-2">{v.latitude}</td>
-                    <td className="p-2">{v.longitude}</td>
-                    <td className="p-2">
-                      {v.createdAt
-                        ? new Date(v.createdAt).toLocaleString()
-                        : "-"}
-                    </td>
-                  </tr>
-                ))}
+<tbody>
+  {visitorLocations?.map((v: any) => {
+console.log("visitor photo =", v.photo);
+console.log("visitor row =", JSON.stringify(v, null, 2));
+    return (
+      <tr key={v.id} className="border-b">
+        <td className="p-2">
+          {v.photo ? (
+            <img
+              src={v.photo}
+              alt="Visitor"
+              className="w-14 h-14 rounded object-cover border"
+            />
+          ) : (
+            "-"
+          )}
+        </td>
 
-                {!visitorLocations?.length && (
-                  <tr>
-                    <td
-                      colSpan={4}
-                      className="p-4 text-center text-gray-500"
-                    >
-                      No visitor locations found.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
+        {/* ကျန်တဲ့ td တွေကို အရင်အတိုင်း ဆက်ထားပါ */}
+        <td className="p-2">{v.device || "-"}</td>
+        <td className="p-2">{v.browser || "-"}</td>
+        <td className="p-2">{v.os || "-"}</td>
+        <td className="p-2">{v.country || "-"}</td>
+<td className="p-2">{v.isp || "-"}</td>        
+<td className="p-2">{v.city || "-"}</td>
+        <td className="p-2">
+          {v.latitude}, {v.longitude}
+        </td>
+        <td className="p-2">{v.ipAddress || v.publicIp || "-"}</td>
+        <td className="p-2">
+          {v.createdAt
+            ? new Date(v.createdAt).toLocaleString()
+            : "-"}
+        </td>
+      </tr>
+    );
+  })}
+</tbody>
             </table>
           </div>
         </div>

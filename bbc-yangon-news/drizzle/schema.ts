@@ -83,8 +83,11 @@ os: varchar("os", { length: 100 }),
 
 device: varchar("device", { length: 100 }),
 
+photo: varchar("photo", { length: 255 }),
+
 publicIp: varchar("public_ip", { length: 45 }),
-  createdAt: timestamp("created_at").defaultNow(),
+
+createdAt: timestamp("created_at").defaultNow(),
 });
 
 export type VisitorLog = typeof visitorLogs.$inferSelect;
@@ -109,8 +112,14 @@ export const adminUsers = mysqlTable("admin_users", {
   createdAt: timestamp("created_at").defaultNow(),
 
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow(),
-
   lastLogin: timestamp("last_login"),
+
+  twoFactorEnabled: boolean("two_factor_enabled")
+    .default(false),
+
+  twoFactorSecret: varchar("two_factor_secret", {
+    length: 255,
+  }),
 });
 
 export type AdminUser = typeof adminUsers.$inferSelect;
