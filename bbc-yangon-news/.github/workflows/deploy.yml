@@ -1,0 +1,35 @@
+name: Deploy BBC Yangon News
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to Ubuntu Server
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.PORT }}
+          script: |
+            cd ${{ secrets.PROJECT_PATH }}
+
+            echo "Pull latest code..."
+            git pull origin main
+
+            echo "Install dependencies..."
+            npm ci
+
+            echo "Build project..."
+            npm run build
+
+            echo "Reload PM2..."
+            pm2 reload bbc-yangon-news
+
+            echo "Deployment completed!"
