@@ -1,67 +1,148 @@
-import express, { type Express } from "express";
-import fs from "fs";
-import { type Server } from "http";
-import { nanoid } from "nanoid";
-import path from "path";
-import { createServer as createViteServer } from "vite";
-import viteConfig from "../../vite.config";
+ import express, { type Express } from "express";
+      import fs from "fs";
+       import { type Server } from "http";
+       import { nanoid } from "nanoid";
+       import path from "path";
+       import { createServer as createViteServer } from "vite";
+       import viteConfig from "../../vite.config";
+       import { getArticleById } from "../db";
+     
+  export async function setupVite(app: Express, server: Server) {
+        const serverOptions = {
+          middlewareMode: true,
+          hmr: { server },
+          allowedHosts: true as const,
+        };
+    
+        const vite = await createViteServer({
+          ...viteConfig,
+          configFile: false,
+          server: serverOptions,
+          appType: "custom",
+        });
+    
+        app.use(vite.middlewares);
+    
+    app.use("*", async (req, res, next) => {
+console.log("REQUEST:", req.originalUrl);
 
-export async function setupVite(app: Express, server: Server) {
-  const serverOptions = {
-    middlewareMode: true,
-    hmr: { server },
-    allowedHosts: true as const,
-  };
+const match = req.originalUrl.match(/^\/article\/([^/?#]+)/);
 
-  const vite = await createViteServer({
-    ...viteConfig,
-    configFile: false,
-    server: serverOptions,
-    appType: "custom",
-  });
+console.log("MATCH:", match?.[1]);
+          const url = req.originalUrl;
+    
+          try {
+           const clientTemplate = path.resolve(
+              import.meta.dirname,
+              "../..",
+              "client",
+              "index.html"
+            );
+    
+            // always reload the index.html file from disk incase it changes
+            let template = await fs.promises.readFile(clientTemplate, "utf-8");
+      let title = "BBC Yangon News";
+      let description = "Latest Myanmar News";
+      let image = "https://bcdcmyanmar.com/logo.png";
+      let pageUrl = `https://bcdcmyanmar.com${url}`;
+const match = url.match(/^\/article\/([^/?#]+)/);
 
-  app.use(vite.middlewares);
-  app.use("*", async (req, res, next) => {
-    const url = req.originalUrl;
+if (match) {
+  const article = await getArticleById(match[1]);
 
-    try {
-      const clientTemplate = path.resolve(
-        import.meta.dirname,
-        "../..",
-        "client",
-        "index.html"
-      );
+  console.log("OG PROD:", url, match?.[1], article?.id, article?.title);
 
-      // always reload the index.html file from disk incase it changes
-      let template = await fs.promises.readFile(clientTemplate, "utf-8");
-      template = template.replace(
-        `src="/src/main.tsx"`,
-        `src="/src/main.tsx?v=${nanoid()}"`
-      );
-      const page = await vite.transformIndexHtml(url, template);
-      res.status(200).set({ "Content-Type": "text/html" }).end(page);
-    } catch (e) {
-      vite.ssrFixStacktrace(e as Error);
-      next(e);
-    }
-  });
+  if (article) {
+    title = article.title;
+description = article.content
+  .replace(/\r?\n/g, " ")
+  .replace(/"/g, "&quot;")
+  .substring(0, 180);
+
+image = article.coverImageUrl.startsWith("http")
+  ? article.coverImageUrl
+  : `https://bcdcmyanmar.com${article.coverImageUrl}`;
+  }
 }
 
-export function serveStatic(app: Express) {
-  const distPath =
-    process.env.NODE_ENV === "development"
-      ? path.resolve(import.meta.dirname, "../..", "dist", "public")
-      : path.resolve(import.meta.dirname, "public");
-  if (!fs.existsSync(distPath)) {
-    console.error(
-      `Could not find the build directory: ${distPath}, make sure to build the client first`
-    );
+
+      
+template = template
+  .replaceAll("%TITLE%", title)
+  .replaceAll("%OG_TITLE%", title)
+  .replaceAll("%OG_DESCRIPTION%", description)
+  .replaceAll("%OG_IMAGE%", image)
+  .replaceAll("%OG_URL%", pageUrl);
+      template = template.replace(
+              `src="/src/main.tsx"`,
+              `src="/src/main.tsx?v=${nanoid()}"`
+            );
+            const page = await vite.transformIndexHtml(url, template);
+            res.status(200).set({ "Content-Type": "text/html" }).end(page);
+          } catch (e) {
+            vite.ssrFixStacktrace(e as Error);
+            next(e);
+          }
+        });
+      }
+    
+      export function serveStatic(app: Express) {
+        const distPath =
+          process.env.NODE_ENV === "development"
+            ? path.resolve(import.meta.dirname, "../..", "dist", "public")
+            : path.resolve(import.meta.dirname, "public");
+        if (!fs.existsSync(distPath)) {
+          console.error(
+            `Could not find the build directory: ${distPath}, make sure to build the client first`
+          );
+        }
+    
+app.use(
+  express.static(distPath, {
+    index: false,
+  })
+);    
+        // fall through to index.html if the file doesn't exist
+      app.use("*", async (req, res) => {
+  const url = req.originalUrl;
+
+  let template = await fs.promises.readFile(
+    path.resolve(distPath, "index.html"),
+    "utf-8"
+  );
+
+  let title = "BBC Yangon News";
+  let description = "Latest Myanmar News";
+  let image = "https://bcdcmyanmar.com/logo.png";
+  let pageUrl = `https://bcdcmyanmar.com${url}`;
+
+const match = url.match(/^\/article\/([^/?#]+)/);
+  if (match) {
+    const article = await getArticleById(match[1]);
+console.log("ARTICLE:", article);
+    if (article) {
+title = article.title
+  .replace(/\r?\n/g, " ")
+  .replace(/"/g, "&quot;");
+
+description = article.content
+  .replace(/\r?\n/g, " ")
+  .replace(/"/g, "&quot;")
+  .substring(0, 180);
+
+image = article.coverImageUrl.startsWith("http")
+  ? article.coverImageUrl
+  : `https://bcdcmyanmar.com${article.coverImageUrl}`;
+    }
   }
 
-  app.use(express.static(distPath));
+  template = template
+    .replaceAll("%OG_TITLE%", title)
+    .replaceAll("%OG_DESCRIPTION%", description)
+    .replaceAll("%OG_IMAGE%", image)
+    .replaceAll("%OG_URL%", pageUrl);
 
-  // fall through to index.html if the file doesn't exist
-  app.use("*", (_req, res) => {
-    res.sendFile(path.resolve(distPath, "index.html"));
-  });
+  res.setHeader("Content-Type", "text/html");
+  res.send(template);
+});
 }

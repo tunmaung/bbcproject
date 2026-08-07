@@ -1,3 +1,4 @@
+
 import "dotenv/config";
 import express from "express";
 import { createServer } from "https";
@@ -13,7 +14,6 @@ import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 
 import uploadRouter from "../upload";
-import { getArticleById } from "../db";
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise((resolve) => {
     const server = net.createServer();
@@ -58,48 +58,8 @@ app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 app.use("/api/upload", uploadRouter);
   registerStorageProxy(app);
   registerOAuthRoutes(app);
-app.get("/article/:id", async (req, res) => {
-  const article = await getArticleById(req.params.id);
 
-  if (!article) {
-    return res.status(404).send("Article not found");
-  }
 
-  const url = `https://bcdcmyanmar.com/article/${article.id}`;
-
-  const image = article.coverImageUrl.startsWith("http")
-    ? article.coverImageUrl
-    : `https://bcdcmyanmar.com${article.coverImageUrl}`;
-
-  res.send(`
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-
-<title>${article.title}</title>
-
-<meta property="og:type" content="article">
-<meta property="og:title" content="${article.title}">
-<meta property="og:description" content="${article.content.substring(0,180)}">
-<meta property="og:image" content="${image}">
-<meta property="og:url" content="${url}">
-
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="${article.title}">
-<meta name="twitter:description" content="${article.content.substring(0,180)}">
-<meta name="twitter:image" content="${image}">
-
-<meta http-equiv="refresh" content="0; url=/">
-
-</head>
-
-<body>
-Redirecting...
-</body>
-</html>
-`);
-});
   app.use(
     "/api/trpc",
     createExpressMiddleware({
