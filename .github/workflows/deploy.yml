@@ -5,31 +5,55 @@ on:
     branches:
       - main
 
+concurrency:
+  group: production
+  cancel-in-progress: true
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Deploy to Ubuntu Server
+      - name: Deploy to Server
         uses: appleboy/ssh-action@v1.2.2
         with:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_KEY }}
           port: ${{ secrets.PORT }}
+          script_stop: true
           script: |
-            cd ${{ secrets.PROJECT_PATH }}
+            set -e
+
+            echo "=============================="
+            echo "BBC Yangon News Deployment"
+            echo "=============================="
+
+            cd "${{ secrets.PROJECT_PATH }}"
+
+            echo "Current Directory:"
+            pwd
 
             echo "Pull latest code..."
-            git pull origin main
+            git fetch origin
+            git reset --hard origin/main
+
+            echo "Node Version:"
+            node -v
+
+            echo "Enable Corepack..."
+            corepack enable
+
+            echo "PNPM Version:"
+            pnpm -v
 
             echo "Install dependencies..."
-            npm ci
+            pnpm install --frozen-lockfile
 
             echo "Build project..."
-            npm run build
+            pnpm run build
 
             echo "Reload PM2..."
-            pm2 reload bbc-yangon-news
+            pm2 reload all
 
-            echo "Deployment completed!"
+            echo "Deployment Successful!"
