@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Deploy to Server
+      - name: Deploy to Ubuntu Server
         uses: appleboy/ssh-action@v1.2.2
 
         with:
@@ -31,15 +31,16 @@ jobs:
             echo "BBC Yangon News Deployment"
             echo "=============================="
 
-            git config --global --add safe.directory /home/ubuntu/bbcproject
+            git config --global --add safe.directory "${{ secrets.PROJECT_PATH }}"
 
-            cd /home/ubuntu/bbcproject/bbc-yangon-news
+            cd "${{ secrets.PROJECT_PATH }}"
 
             echo "Current Directory:"
             pwd
 
             echo "Pull latest code..."
-            git pull origin main
+            git fetch origin
+            git reset --hard origin/main
 
             echo "Node Version:"
             node -v
@@ -57,7 +58,6 @@ jobs:
             pnpm run build
 
             echo "Reload PM2..."
-pm2 reload bbc-yangon-news --update-env
+            pm2 reload bbc-yangon-news --update-env
 
-echo "Deployment Successful!"
             echo "Deployment Successful!"
