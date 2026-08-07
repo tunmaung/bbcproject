@@ -16,7 +16,6 @@ jobs:
     steps:
       - name: Deploy to Ubuntu Server
         uses: appleboy/ssh-action@v1.2.2
-
         with:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USERNAME }}
@@ -27,9 +26,9 @@ jobs:
           script: |
             set -e
 
-            echo "=============================="
+            echo "=================================="
             echo "BBC Yangon News Deployment"
-            echo "=============================="
+            echo "=================================="
 
             git config --global --add safe.directory "${{ secrets.PROJECT_PATH }}"
 
@@ -45,11 +44,8 @@ jobs:
             echo "Node Version:"
             node -v
 
-            echo "Enable Corepack..."
-            corepack enable
-
             echo "PNPM Version:"
-            pnpm -v
+            pnpm --version
 
             echo "Install dependencies..."
             pnpm install --frozen-lockfile
