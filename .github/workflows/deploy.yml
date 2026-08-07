@@ -34,10 +34,10 @@ jobs:
             echo "Current Directory:"
             pwd
 
-            echo "Pull latest code..."
-            git fetch origin
-            git reset --hard origin/main
+  echo "Pull latest code..."
+git config --global --add safe.directory /home/ubuntu/bbcproject
 
+git pull origin main
             echo "Node Version:"
             node -v
 
@@ -54,6 +54,5 @@ jobs:
             pnpm run build
 
             echo "Reload PM2..."
-            pm2 reload all
-
+pm2 reload bbc-yangon-news
             echo "Deployment Successful!"
