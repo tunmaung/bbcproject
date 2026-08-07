@@ -16,12 +16,14 @@ jobs:
     steps:
       - name: Deploy to Server
         uses: appleboy/ssh-action@v1.2.2
+
         with:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_KEY }}
           port: ${{ secrets.PORT }}
           script_stop: true
+
           script: |
             set -e
 
@@ -29,15 +31,16 @@ jobs:
             echo "BBC Yangon News Deployment"
             echo "=============================="
 
-            cd "${{ secrets.PROJECT_PATH }}"
+            git config --global --add safe.directory /home/ubuntu/bbcproject
+
+            cd /home/ubuntu/bbcproject/bbc-yangon-news
 
             echo "Current Directory:"
             pwd
 
-  echo "Pull latest code..."
-git config --global --add safe.directory /home/ubuntu/bbcproject
+            echo "Pull latest code..."
+            git pull origin main
 
-git pull origin main
             echo "Node Version:"
             node -v
 
@@ -54,5 +57,6 @@ git pull origin main
             pnpm run build
 
             echo "Reload PM2..."
-pm2 reload bbc-yangon-news
+            pm2 reload all
+
             echo "Deployment Successful!"
