@@ -16,6 +16,7 @@ jobs:
     steps:
       - name: Deploy to Ubuntu Server
         uses: appleboy/ssh-action@v1.2.2
+
         with:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USERNAME }}
@@ -24,36 +25,5 @@ jobs:
           script_stop: true
 
           script: |
-            set -e
-
-            echo "=================================="
-            echo "BBC Yangon News Deployment"
-            echo "=================================="
-
-            git config --global --add safe.directory /home/ubuntu/bbcproject
-
             cd /home/ubuntu/bbcproject/bbc-yangon-news
-
-            echo "Current Directory:"
-            pwd
-
-            echo "Pull latest code..."
-            git fetch origin
-            git reset --hard origin/main
-
-            echo "Node Version:"
-            node -v
-
-            echo "PNPM Version:"
-            pnpm --version
-
-            echo "Install dependencies..."
-            pnpm install --frozen-lockfile
-
-            echo "Build project..."
-            pnpm run build
-
-            echo "Reload PM2..."
-            pm2 reload bbc-yangon-news --update-env
-
-            echo "Deployment Successful!"
+            bash scripts/deploy.sh
