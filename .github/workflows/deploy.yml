@@ -24,6 +24,10 @@ env:
   APP_NAME: bbc-yangon-news
   HEALTH_URL: https://127.0.0.1:3001/health
 
+defaults:
+  run:
+    working-directory: bbc-yangon-news
+
 jobs:
 
   # ============================================================
@@ -56,6 +60,10 @@ jobs:
           git --version
 
           echo
+          echo "Repository:"
+          pwd
+
+          echo
           echo "Commit:"
           echo "$GITHUB_SHA"
 
@@ -68,7 +76,7 @@ jobs:
 
 
   # ============================================================
-  # 02 - CHECKOUT
+  # 02 - CHECKOUT SOURCE
   # ============================================================
 
   checkout:
@@ -89,19 +97,28 @@ jobs:
           echo "02 • SOURCE CHECKOUT"
           echo "=============================================="
 
-          echo "Commit:"
-          git rev-parse HEAD
+          echo "Working directory:"
+          pwd
 
           echo
-          echo "Repository:"
-          git remote -v
+          echo "Package:"
+          test -f package.json
+          cat package.json | head -20
+
+          echo
+          echo "Lockfile:"
+          test -f pnpm-lock.yaml
+
+          echo
+          echo "Commit:"
+          git rev-parse HEAD
 
           echo
           echo "Source checkout completed."
 
 
   # ============================================================
-  # 03 - INSTALL
+  # 03 - INSTALL DEPENDENCIES
   # ============================================================
 
   install:
@@ -133,12 +150,24 @@ jobs:
           echo "03 • RUNTIME"
           echo "=============================================="
 
+          echo "Working directory:"
+          pwd
+
+          echo
           echo "Node:"
           node -v
 
           echo
           echo "PNPM:"
           pnpm -v
+
+          echo
+          echo "Package:"
+          test -f package.json
+
+          echo
+          echo "Lockfile:"
+          test -f pnpm-lock.yaml
 
       - name: Install dependencies
         run: |
@@ -297,7 +326,7 @@ jobs:
 
 
   # ============================================================
-  # 07 - SECURITY
+  # 07 - SECURITY AUDIT
   # ============================================================
 
   security:
@@ -339,7 +368,7 @@ jobs:
 
 
   # ============================================================
-  # 08 - BUILD
+  # 08 - PRODUCTION BUILD
   # ============================================================
 
   build:
@@ -379,13 +408,14 @@ jobs:
           echo
           echo "Build completed."
 
-      - name: Verify build files
+      - name: Verify build
         run: |
           set -e
 
           test -f dist/index.js
           test -d dist/public
 
+          echo
           echo "Build output verified."
 
       - name: Create release package
@@ -518,7 +548,7 @@ jobs:
 
 
   # ============================================================
-  # 11 - BACKUP
+  # 11 - PRODUCTION BACKUP
   # ============================================================
 
   backup:
@@ -577,7 +607,7 @@ jobs:
 
 
   # ============================================================
-  # 12 - SOURCE SYNC
+  # 12 - SOURCE SYNCHRONIZATION
   # ============================================================
 
   source_sync:
@@ -653,9 +683,7 @@ jobs:
             echo "13 • RUNTIME DEPENDENCIES"
             echo "=============================================="
 
-            pnpm install \
-              --frozen-lockfile \
-              --prod
+            pnpm install --frozen-lockfile
 
             echo
             echo "Runtime dependencies ready."
@@ -780,11 +808,9 @@ jobs:
             rm -rf "$PROJECT_DIR/.cicd/previous-dist"
 
             if [ -d "$PROJECT_DIR/dist" ]; then
-
               mv \
                 "$PROJECT_DIR/dist" \
                 "$PROJECT_DIR/.cicd/previous-dist"
-
             fi
 
             mv \
@@ -1135,12 +1161,9 @@ jobs:
               | cut -d' ' -f2-)
 
             if [ -z "$BACKUP" ]; then
-
               echo
               echo "CRITICAL: No backup found."
-
               exit 2
-
             fi
 
             echo
