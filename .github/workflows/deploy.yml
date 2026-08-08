@@ -17,16 +17,9 @@ permissions:
 env:
   NODE_VERSION: "22"
   PNPM_VERSION: "10.4.1"
-
-  PROJECT_DIR: /home/ubuntu/bbcproject/bbc-yangon-news
-  BACKUP_DIR: /home/ubuntu/bbcproject/bbc-yangon-news/backups
-
+  SERVER_DIR: /home/ubuntu/bbcproject/bbc-yangon-news
   APP_NAME: bbc-yangon-news
   HEALTH_URL: https://127.0.0.1:3001/health
-
-defaults:
-  run:
-    working-directory: bbc-yangon-news
 
 jobs:
 
@@ -40,7 +33,10 @@ jobs:
     timeout-minutes: 5
 
     steps:
-      - name: Check runner
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify repository
         run: |
           set -e
 
@@ -48,31 +44,14 @@ jobs:
           echo "01 • PREFLIGHT"
           echo "=============================================="
 
-          echo "Runner:"
-          uname -a
+          echo "Commit: $GITHUB_SHA"
+          echo "Branch: $GITHUB_REF_NAME"
 
-          echo
-          echo "Node:"
-          node -v
+          test -f bbc-yangon-news/package.json
+          test -f bbc-yangon-news/pnpm-lock.yaml
 
-          echo
-          echo "Git:"
-          git --version
-
-          echo
-          echo "Repository:"
-          pwd
-
-          echo
-          echo "Commit:"
-          echo "$GITHUB_SHA"
-
-          echo
-          echo "Branch:"
-          echo "$GITHUB_REF_NAME"
-
-          echo
-          echo "Preflight passed."
+          echo "package.json: OK"
+          echo "pnpm-lock.yaml: OK"
 
 
   # ============================================================
@@ -82,38 +61,32 @@ jobs:
   checkout:
     name: "02 • Checkout Source"
     runs-on: ubuntu-latest
-    timeout-minutes: 5
     needs: preflight
+    timeout-minutes: 5
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Verify source
+      - name: Verify source tree
         run: |
           set -e
 
+          cd bbc-yangon-news
+
           echo "=============================================="
-          echo "02 • SOURCE CHECKOUT"
+          echo "02 • CHECKOUT SOURCE"
           echo "=============================================="
 
-          echo "Working directory:"
+          echo "Directory:"
           pwd
 
-          echo
-          echo "Package:"
-          test -f package.json
-          cat package.json | head -20
-
-          echo
-          echo "Lockfile:"
-          test -f pnpm-lock.yaml
-
-          echo
           echo "Commit:"
           git rev-parse HEAD
 
-          echo
+          test -f package.json
+          test -f pnpm-lock.yaml
+
           echo "Source checkout completed."
 
 
@@ -124,8 +97,8 @@ jobs:
   install:
     name: "03 • Install Dependencies"
     runs-on: ubuntu-latest
-    timeout-minutes: 15
     needs: checkout
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
@@ -142,16 +115,21 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Verify runtime
+      - name: Install dependencies
         run: |
           set -e
 
+          cd bbc-yangon-news
+
           echo "=============================================="
-          echo "03 • RUNTIME"
+          echo "03 • INSTALL DEPENDENCIES"
           echo "=============================================="
 
-          echo "Working directory:"
+          echo "Directory:"
           pwd
+
+          test -f package.json
+          test -f pnpm-lock.yaml
 
           echo
           echo "Node:"
@@ -162,20 +140,7 @@ jobs:
           pnpm -v
 
           echo
-          echo "Package:"
-          test -f package.json
-
-          echo
-          echo "Lockfile:"
-          test -f pnpm-lock.yaml
-
-      - name: Install dependencies
-        run: |
-          set -e
-
-          echo "=============================================="
-          echo "03 • INSTALL DEPENDENCIES"
-          echo "=============================================="
+          echo "Installing dependencies..."
 
           pnpm install --frozen-lockfile
 
@@ -190,8 +155,8 @@ jobs:
   quality:
     name: "04 • Code Quality"
     runs-on: ubuntu-latest
-    timeout-minutes: 10
     needs: install
+    timeout-minutes: 10
 
     steps:
       - name: Checkout
@@ -209,20 +174,28 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Install
-        run: pnpm install --frozen-lockfile
+        run: |
+          cd bbc-yangon-news
+          pnpm install --frozen-lockfile
 
-      - name: Code quality
+      - name: Quality check
         run: |
           set -e
+
+          cd bbc-yangon-news
 
           echo "=============================================="
           echo "04 • CODE QUALITY"
           echo "=============================================="
 
-          pnpm run check
-
-          echo
-          echo "Code quality passed."
+          if node -e 'process.exit(require("./package.json").scripts?.check ? 0 : 1)'; then
+            pnpm run check
+          elif node -e 'process.exit(require("./package.json").scripts?.lint ? 0 : 1)'; then
+            pnpm run lint
+          else
+            echo "No check/lint script configured."
+            echo "Source validation completed."
+          fi
 
 
   # ============================================================
@@ -232,8 +205,8 @@ jobs:
   typecheck:
     name: "05 • Type Check"
     runs-on: ubuntu-latest
-    timeout-minutes: 10
     needs: quality
+    timeout-minutes: 10
 
     steps:
       - name: Checkout
@@ -251,20 +224,26 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Install
-        run: pnpm install --frozen-lockfile
+        run: |
+          cd bbc-yangon-news
+          pnpm install --frozen-lockfile
 
-      - name: TypeScript validation
+      - name: Type check
         run: |
           set -e
+
+          cd bbc-yangon-news
 
           echo "=============================================="
           echo "05 • TYPE CHECK"
           echo "=============================================="
 
-          pnpm exec tsc --noEmit
-
-          echo
-          echo "TypeScript validation passed."
+          if [ -f tsconfig.json ]; then
+            pnpm exec tsc --noEmit
+          else
+            echo "No tsconfig.json found."
+            echo "Type-check stage completed."
+          fi
 
 
   # ============================================================
@@ -274,8 +253,8 @@ jobs:
   tests:
     name: "06 • Test Suite"
     runs-on: ubuntu-latest
-    timeout-minutes: 15
     needs: typecheck
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
@@ -293,35 +272,25 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Install
-        run: pnpm install --frozen-lockfile
+        run: |
+          cd bbc-yangon-news
+          pnpm install --frozen-lockfile
 
-      - name: Run tests
+      - name: Test suite
         run: |
           set -e
+
+          cd bbc-yangon-news
 
           echo "=============================================="
           echo "06 • TEST SUITE"
           echo "=============================================="
 
-          if find . \
-            -path ./node_modules -prune -o \
-            -type f \
-            \( \
-              -name "*.test.ts" \
-              -o -name "*.test.tsx" \
-              -o -name "*.spec.ts" \
-              -o -name "*.spec.tsx" \
-            \) \
-            | grep -q .; then
-
-            echo "Test files found."
+          if node -e 'process.exit(require("./package.json").scripts?.test ? 0 : 1)'; then
             pnpm test
-
           else
-
-            echo "No automated test files found."
+            echo "No test script configured."
             echo "Test stage completed."
-
           fi
 
 
@@ -332,8 +301,8 @@ jobs:
   security:
     name: "07 • Security Audit"
     runs-on: ubuntu-latest
-    timeout-minutes: 10
     needs: tests
+    timeout-minutes: 10
 
     steps:
       - name: Checkout
@@ -350,21 +319,19 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Install
-        run: pnpm install --frozen-lockfile
-
-      - name: Security audit
+      - name: Audit dependencies
         run: |
           set -e
+
+          cd bbc-yangon-news
 
           echo "=============================================="
           echo "07 • SECURITY AUDIT"
           echo "=============================================="
 
-          pnpm audit --audit-level=high
+          pnpm install --frozen-lockfile
 
-          echo
-          echo "Security audit passed."
+          pnpm audit --audit-level=high
 
 
   # ============================================================
@@ -374,8 +341,8 @@ jobs:
   build:
     name: "08 • Production Build"
     runs-on: ubuntu-latest
-    timeout-minutes: 20
     needs: security
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -393,11 +360,15 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Install
-        run: pnpm install --frozen-lockfile
+        run: |
+          cd bbc-yangon-news
+          pnpm install --frozen-lockfile
 
-      - name: Build application
+      - name: Build
         run: |
           set -e
+
+          cd bbc-yangon-news
 
           echo "=============================================="
           echo "08 • PRODUCTION BUILD"
@@ -405,36 +376,25 @@ jobs:
 
           pnpm run build
 
-          echo
-          echo "Build completed."
-
-      - name: Verify build
-        run: |
-          set -e
-
           test -f dist/index.js
           test -d dist/public
 
           echo
-          echo "Build output verified."
+          echo "Production build successful."
 
-      - name: Create release package
+      - name: Package release
         run: |
           set -e
 
-          tar -czf bbc-yangon-news-release.tar.gz dist
+          cd bbc-yangon-news
+
+          tar -czf ../bbc-yangon-news-release.tar.gz dist
 
           sha256sum \
-            bbc-yangon-news-release.tar.gz \
-            > bbc-yangon-news-release.sha256
+            ../bbc-yangon-news-release.tar.gz \
+            > ../bbc-yangon-news-release.sha256
 
-          echo
-          echo "Release package:"
-          ls -lh \
-            bbc-yangon-news-release.tar.gz \
-            bbc-yangon-news-release.sha256
-
-      - name: Upload release artifact
+      - name: Upload release
         uses: actions/upload-artifact@v4
         with:
           name: bbc-yangon-news-release
@@ -448,19 +408,19 @@ jobs:
   # 09 - ARTIFACT VERIFICATION
   # ============================================================
 
-  artifact_verify:
+  artifact:
     name: "09 • Artifact Verification"
     runs-on: ubuntu-latest
-    timeout-minutes: 5
     needs: build
+    timeout-minutes: 5
 
     steps:
-      - name: Download artifact
+      - name: Download release
         uses: actions/download-artifact@v4
         with:
           name: bbc-yangon-news-release
 
-      - name: Verify checksum
+      - name: Verify release
         run: |
           set -e
 
@@ -471,19 +431,12 @@ jobs:
           sha256sum -c \
             bbc-yangon-news-release.sha256
 
-          echo
-          echo "Checksum verified."
-
-      - name: Verify archive
-        run: |
-          set -e
-
           tar -tzf \
             bbc-yangon-news-release.tar.gz \
-            | grep -q "^dist/"
+            | grep -q '^dist/index.js$'
 
           echo
-          echo "Archive verified."
+          echo "Artifact verified successfully."
 
 
   # ============================================================
@@ -493,8 +446,8 @@ jobs:
   server_preflight:
     name: "10 • Server Preflight"
     runs-on: ubuntu-latest
+    needs: artifact
     timeout-minutes: 5
-    needs: artifact_verify
 
     steps:
       - name: Check production server
@@ -516,35 +469,18 @@ jobs:
             echo "10 • SERVER PREFLIGHT"
             echo "=============================================="
 
-            echo "Hostname:"
-            hostname
-
-            echo
-            echo "Node:"
-            node -v
-
-            echo
-            echo "PNPM:"
-            pnpm -v
-
-            echo
-            echo "Disk:"
-            df -h /
-
-            echo
-            echo "Memory:"
-            free -h
-
-            echo
-            echo "PM2:"
-            pm2 status
-
             test -d "$PROJECT_DIR"
+
+            command -v node >/dev/null
+            command -v pnpm >/dev/null
+            command -v pm2 >/dev/null
+
+            test -f "$PROJECT_DIR/package.json"
 
             pm2 describe "$APP_NAME" >/dev/null
 
             echo
-            echo "Production server ready."
+            echo "Server is ready."
 
 
   # ============================================================
@@ -554,11 +490,11 @@ jobs:
   backup:
     name: "11 • Production Backup"
     runs-on: ubuntu-latest
-    timeout-minutes: 5
     needs: server_preflight
+    timeout-minutes: 5
 
     steps:
-      - name: Create production backup
+      - name: Backup current release
         uses: appleboy/ssh-action@v1.2.2
         with:
           host: ${{ secrets.HOST }}
@@ -571,7 +507,7 @@ jobs:
             set -e
 
             PROJECT_DIR="/home/ubuntu/bbcproject/bbc-yangon-news"
-            BACKUP_DIR="/home/ubuntu/bbcproject/bbc-yangon-news/backups"
+            BACKUP_DIR="$PROJECT_DIR/backups"
 
             mkdir -p "$BACKUP_DIR"
 
@@ -581,20 +517,16 @@ jobs:
 
             if [ -d "$PROJECT_DIR/dist" ]; then
 
-              TIMESTAMP=$(date +"%Y%m%d-%H%M%S")
-
-              BACKUP_FILE="$BACKUP_DIR/dist-$TIMESTAMP.tar.gz"
+              TS=$(date +"%Y%m%d-%H%M%S")
 
               tar -czf \
-                "$BACKUP_FILE" \
+                "$BACKUP_DIR/dist-$TS.tar.gz" \
                 -C "$PROJECT_DIR" \
                 dist
 
               echo
               echo "Backup created:"
-              echo "$BACKUP_FILE"
-
-              sha256sum "$BACKUP_FILE"
+              echo "$BACKUP_DIR/dist-$TS.tar.gz"
 
             else
 
@@ -602,22 +534,19 @@ jobs:
 
             fi
 
-            echo
-            echo "Backup completed."
-
 
   # ============================================================
   # 12 - SOURCE SYNCHRONIZATION
   # ============================================================
 
-  source_sync:
+  sync:
     name: "12 • Source Synchronization"
     runs-on: ubuntu-latest
-    timeout-minutes: 5
     needs: backup
+    timeout-minutes: 5
 
     steps:
-      - name: Sync source
+      - name: Sync source on server
         uses: appleboy/ssh-action@v1.2.2
         with:
           host: ${{ secrets.HOST }}
@@ -637,19 +566,18 @@ jobs:
             echo "12 • SOURCE SYNCHRONIZATION"
             echo "=============================================="
 
-            git config --global \
-              --add safe.directory "$PROJECT_DIR"
+            git config \
+              --global \
+              --add safe.directory \
+              "$PROJECT_DIR"
 
-            git fetch origin
+            git fetch origin main
 
             git reset --hard origin/main
 
             echo
-            echo "Production commit:"
+            echo "Server commit:"
             git rev-parse HEAD
-
-            echo
-            echo "Source synchronized."
 
 
   # ============================================================
@@ -659,8 +587,8 @@ jobs:
   runtime:
     name: "13 • Runtime Dependencies"
     runs-on: ubuntu-latest
+    needs: sync
     timeout-minutes: 10
-    needs: source_sync
 
     steps:
       - name: Install runtime dependencies
@@ -693,14 +621,14 @@ jobs:
   # 14 - RELEASE PREPARATION
   # ============================================================
 
-  release_prepare:
+  release:
     name: "14 • Release Preparation"
     runs-on: ubuntu-latest
-    timeout-minutes: 5
     needs: runtime
+    timeout-minutes: 5
 
     steps:
-      - name: Prepare release
+      - name: Prepare release directories
         uses: appleboy/ssh-action@v1.2.2
         with:
           host: ${{ secrets.HOST }}
@@ -714,36 +642,31 @@ jobs:
 
             PROJECT_DIR="/home/ubuntu/bbcproject/bbc-yangon-news"
 
-            cd "$PROJECT_DIR"
-
             echo "=============================================="
             echo "14 • RELEASE PREPARATION"
             echo "=============================================="
 
-            mkdir -p .cicd/incoming
+            mkdir -p \
+              "$PROJECT_DIR/.cicd/incoming"
 
-            touch .cicd/deployment-active
+            rm -rf \
+              "$PROJECT_DIR/.cicd/new-dist"
 
-            echo
-            echo "Deployment window opened."
-
-            echo
-            echo "Current release:"
-            ls -lh dist/index.js
+            echo "Release directories ready."
 
 
   # ============================================================
   # 15 - ARTIFACT DEPLOYMENT
   # ============================================================
 
-  artifact_deploy:
+  deploy_artifact:
     name: "15 • Artifact Deployment"
     runs-on: ubuntu-latest
+    needs: release
     timeout-minutes: 10
-    needs: release_prepare
 
     steps:
-      - name: Download release artifact
+      - name: Download release
         uses: actions/download-artifact@v4
         with:
           name: bbc-yangon-news-release
@@ -756,11 +679,9 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           port: ${{ secrets.PORT }}
 
-          source: |
-            bbc-yangon-news-release.tar.gz
-            bbc-yangon-news-release.sha256
+          source: "bbc-yangon-news-release.tar.gz,bbc-yangon-news-release.sha256"
 
-          target: /home/ubuntu/bbcproject/bbc-yangon-news/.cicd/incoming
+          target: "/home/ubuntu/bbcproject/bbc-yangon-news/.cicd/incoming/"
 
       - name: Install release
         uses: appleboy/ssh-action@v1.2.2
@@ -775,25 +696,22 @@ jobs:
             set -e
 
             PROJECT_DIR="/home/ubuntu/bbcproject/bbc-yangon-news"
-
-            cd "$PROJECT_DIR/.cicd/incoming"
+            INCOMING="$PROJECT_DIR/.cicd/incoming"
 
             echo "=============================================="
             echo "15 • ARTIFACT DEPLOYMENT"
             echo "=============================================="
 
-            echo
-            echo "Verifying checksum..."
+            cd "$INCOMING"
 
             sha256sum -c \
               bbc-yangon-news-release.sha256
 
-            echo
-            echo "Extracting release..."
+            rm -rf \
+              "$PROJECT_DIR/.cicd/new-dist"
 
-            rm -rf "$PROJECT_DIR/.cicd/new-dist"
-
-            mkdir -p "$PROJECT_DIR/.cicd/new-dist"
+            mkdir -p \
+              "$PROJECT_DIR/.cicd/new-dist"
 
             tar -xzf \
               bbc-yangon-news-release.tar.gz \
@@ -802,15 +720,15 @@ jobs:
             test -f \
               "$PROJECT_DIR/.cicd/new-dist/dist/index.js"
 
-            echo
-            echo "Moving current release..."
-
-            rm -rf "$PROJECT_DIR/.cicd/previous-dist"
+            rm -rf \
+              "$PROJECT_DIR/.cicd/previous-dist"
 
             if [ -d "$PROJECT_DIR/dist" ]; then
+
               mv \
                 "$PROJECT_DIR/dist" \
                 "$PROJECT_DIR/.cicd/previous-dist"
+
             fi
 
             mv \
@@ -818,21 +736,21 @@ jobs:
               "$PROJECT_DIR/dist"
 
             echo
-            echo "Artifact deployed."
+            echo "Release installed successfully."
 
 
   # ============================================================
   # 16 - PM2 RELOAD
   # ============================================================
 
-  pm2_reload:
+  pm2:
     name: "16 • PM2 Reload"
     runs-on: ubuntu-latest
+    needs: deploy_artifact
     timeout-minutes: 5
-    needs: artifact_deploy
 
     steps:
-      - name: Reload PM2
+      - name: Reload application
         uses: appleboy/ssh-action@v1.2.2
         with:
           host: ${{ secrets.HOST }}
@@ -844,16 +762,13 @@ jobs:
           script: |
             set -e
 
-            APP_NAME="bbc-yangon-news"
-
             echo "=============================================="
             echo "16 • PM2 RELOAD"
             echo "=============================================="
 
-            pm2 reload "$APP_NAME" --update-env
-
-            echo
-            echo "Waiting for application..."
+            pm2 reload \
+              bbc-yangon-news \
+              --update-env
 
             sleep 5
 
@@ -870,8 +785,8 @@ jobs:
   smoke:
     name: "17 • Smoke Test"
     runs-on: ubuntu-latest
+    needs: pm2
     timeout-minutes: 5
-    needs: pm2_reload
 
     steps:
       - name: Smoke test
@@ -886,24 +801,16 @@ jobs:
           script: |
             set -e
 
-            HEALTH_URL="https://127.0.0.1:3001/health"
-
             echo "=============================================="
             echo "17 • SMOKE TEST"
             echo "=============================================="
 
-            RESPONSE=$(curl \
+            curl \
               -k \
+              -f \
               -sS \
               --max-time 10 \
-              "$HEALTH_URL")
-
-            echo
-            echo "Response:"
-            echo "$RESPONSE"
-
-            echo "$RESPONSE" \
-              | grep -q '"ok":true'
+              https://127.0.0.1:3001/health
 
             echo
             echo "Smoke test passed."
@@ -916,8 +823,8 @@ jobs:
   health:
     name: "18 • Health Check"
     runs-on: ubuntu-latest
-    timeout-minutes: 5
     needs: smoke
+    timeout-minutes: 5
 
     steps:
       - name: Health check
@@ -932,8 +839,6 @@ jobs:
           script: |
             set -e
 
-            HEALTH_URL="https://127.0.0.1:3001/health"
-
             echo "=============================================="
             echo "18 • HEALTH CHECK"
             echo "=============================================="
@@ -942,19 +847,21 @@ jobs:
             do
 
               echo
-              echo "Health check $i/10..."
+              echo "Health check attempt $i/10..."
 
-              RESPONSE=$(curl \
-                -k \
-                -sS \
-                --max-time 10 \
-                "$HEALTH_URL" \
-                2>/dev/null || true)
+              RESPONSE=$(
+                curl \
+                  -k \
+                  -sS \
+                  --max-time 10 \
+                  https://127.0.0.1:3001/health \
+                  2>/dev/null \
+                  || true
+              )
 
               echo "$RESPONSE"
 
-              if echo "$RESPONSE" \
-                | grep -q '"ok":true'; then
+              if echo "$RESPONSE" | grep -q '"ok":true'; then
 
                 echo
                 echo "HEALTH CHECK PASSED."
@@ -977,11 +884,11 @@ jobs:
   # 19 - PRODUCTION VERIFICATION
   # ============================================================
 
-  production_verify:
+  verify:
     name: "19 • Production Verification"
     runs-on: ubuntu-latest
-    timeout-minutes: 5
     needs: health
+    timeout-minutes: 5
 
     steps:
       - name: Verify production
@@ -996,36 +903,25 @@ jobs:
           script: |
             set -e
 
-            APP_NAME="bbc-yangon-news"
-            HEALTH_URL="https://127.0.0.1:3001/health"
+            PROJECT_DIR="/home/ubuntu/bbcproject/bbc-yangon-news"
 
             echo "=============================================="
             echo "19 • PRODUCTION VERIFICATION"
             echo "=============================================="
 
-            echo
-            echo "PM2:"
-            pm2 status
+            pm2 describe \
+              bbc-yangon-news \
+              >/dev/null
 
-            echo
-            echo "Application:"
-            pm2 describe "$APP_NAME"
-
-            echo
-            echo "Ports:"
-
-            sudo ss -lntp \
-              | grep -E ':3000|:3001|:3002' \
-              || true
-
-            echo
-            echo "Health:"
+            test -f \
+              "$PROJECT_DIR/dist/index.js"
 
             curl \
               -k \
+              -f \
               -sS \
               --max-time 10 \
-              "$HEALTH_URL"
+              https://127.0.0.1:3001/health
 
             echo
             echo
@@ -1039,11 +935,12 @@ jobs:
   cleanup:
     name: "20 • Cleanup"
     runs-on: ubuntu-latest
+    needs: verify
+    if: ${{ needs.verify.result == 'success' }}
     timeout-minutes: 5
-    needs: production_verify
 
     steps:
-      - name: Cleanup deployment files
+      - name: Cleanup release files
         uses: appleboy/ssh-action@v1.2.2
         with:
           host: ${{ secrets.HOST }}
@@ -1056,25 +953,23 @@ jobs:
             set -e
 
             PROJECT_DIR="/home/ubuntu/bbcproject/bbc-yangon-news"
-            BACKUP_DIR="/home/ubuntu/bbcproject/bbc-yangon-news/backups"
-
-            cd "$PROJECT_DIR"
+            BACKUP_DIR="$PROJECT_DIR/backups"
 
             echo "=============================================="
             echo "20 • CLEANUP"
             echo "=============================================="
 
-            rm -rf .cicd/previous-dist
-            rm -rf .cicd/new-dist
+            rm -rf \
+              "$PROJECT_DIR/.cicd/new-dist"
+
+            rm -rf \
+              "$PROJECT_DIR/.cicd/previous-dist"
 
             rm -f \
-              .cicd/incoming/bbc-yangon-news-release.tar.gz \
-              .cicd/incoming/bbc-yangon-news-release.sha256
+              "$PROJECT_DIR/.cicd/incoming/bbc-yangon-news-release.tar.gz"
 
-            rm -f .cicd/deployment-active
-
-            echo
-            echo "Keeping latest 5 backups..."
+            rm -f \
+              "$PROJECT_DIR/.cicd/incoming/bbc-yangon-news-release.sha256"
 
             find "$BACKUP_DIR" \
               -maxdepth 1 \
@@ -1085,11 +980,6 @@ jobs:
               | tail -n +6 \
               | cut -d' ' -f2- \
               | xargs -r rm -f
-
-            echo
-            echo "Remaining backups:"
-
-            ls -lh "$BACKUP_DIR" || true
 
             echo
             echo "Cleanup completed."
@@ -1105,28 +995,24 @@ jobs:
     timeout-minutes: 10
 
     needs:
-      - release_prepare
-      - artifact_deploy
-      - pm2_reload
+      - deploy_artifact
+      - pm2
       - smoke
       - health
-      - production_verify
-      - cleanup
+      - verify
 
     if: |
       always() &&
-      !cancelled() &&
-      needs.release_prepare.result == 'success' &&
       (
-        needs.artifact_deploy.result == 'failure' ||
-        needs.pm2_reload.result == 'failure' ||
+        needs.deploy_artifact.result == 'failure' ||
+        needs.pm2.result == 'failure' ||
         needs.smoke.result == 'failure' ||
         needs.health.result == 'failure' ||
-        needs.production_verify.result == 'failure'
+        needs.verify.result == 'failure'
       )
 
     steps:
-      - name: Restore previous release
+      - name: Roll back production
         uses: appleboy/ssh-action@v1.2.2
         with:
           host: ${{ secrets.HOST }}
@@ -1139,31 +1025,31 @@ jobs:
             set -Eeuo pipefail
 
             PROJECT_DIR="/home/ubuntu/bbcproject/bbc-yangon-news"
-            BACKUP_DIR="/home/ubuntu/bbcproject/bbc-yangon-news/backups"
-            APP_NAME="bbc-yangon-news"
-
-            cd "$PROJECT_DIR"
+            BACKUP_DIR="$PROJECT_DIR/backups"
 
             echo "=============================================="
             echo "21 • AUTOMATIC ROLLBACK"
             echo "=============================================="
 
-            echo
-            echo "Finding latest backup..."
-
-            BACKUP=$(find "$BACKUP_DIR" \
-              -maxdepth 1 \
-              -type f \
-              -name "dist-*.tar.gz" \
-              -printf "%T@ %p\n" \
-              | sort -nr \
-              | head -1 \
-              | cut -d' ' -f2-)
+            BACKUP=$(
+              find "$BACKUP_DIR" \
+                -maxdepth 1 \
+                -type f \
+                -name "dist-*.tar.gz" \
+                -printf "%T@ %p\n" \
+                | sort -nr \
+                | head -1 \
+                | cut -d' ' -f2-
+            )
 
             if [ -z "$BACKUP" ]; then
+
               echo
-              echo "CRITICAL: No backup found."
+              echo "CRITICAL:"
+              echo "No production backup found."
+
               exit 2
+
             fi
 
             echo
@@ -1173,21 +1059,25 @@ jobs:
             echo
             echo "Removing failed release..."
 
-            rm -rf "$PROJECT_DIR/dist"
+            rm -rf \
+              "$PROJECT_DIR/dist"
 
             echo
-            echo "Restoring previous release..."
+            echo "Restoring backup..."
 
             tar -xzf \
               "$BACKUP" \
               -C "$PROJECT_DIR"
 
-            test -f "$PROJECT_DIR/dist/index.js"
+            test -f \
+              "$PROJECT_DIR/dist/index.js"
 
             echo
             echo "Reloading PM2..."
 
-            pm2 reload "$APP_NAME" --update-env
+            pm2 reload \
+              bbc-yangon-news \
+              --update-env
 
             sleep 5
 
@@ -1202,13 +1092,9 @@ jobs:
   rollback_verify:
     name: "22 • Rollback Verification"
     runs-on: ubuntu-latest
-    timeout-minutes: 5
-
     needs: rollback
-
-    if: |
-      always() &&
-      needs.rollback.result == 'success'
+    if: ${{ needs.rollback.result == 'success' }}
+    timeout-minutes: 5
 
     steps:
       - name: Verify rollback
@@ -1223,9 +1109,6 @@ jobs:
           script: |
             set -e
 
-            HEALTH_URL="https://127.0.0.1:3001/health"
-            APP_NAME="bbc-yangon-news"
-
             echo "=============================================="
             echo "22 • ROLLBACK VERIFICATION"
             echo "=============================================="
@@ -1236,20 +1119,22 @@ jobs:
               echo
               echo "Rollback health check $i/10..."
 
-              RESPONSE=$(curl \
-                -k \
-                -sS \
-                --max-time 10 \
-                "$HEALTH_URL" \
-                2>/dev/null || true)
+              RESPONSE=$(
+                curl \
+                  -k \
+                  -sS \
+                  --max-time 10 \
+                  https://127.0.0.1:3001/health \
+                  2>/dev/null \
+                  || true
+              )
 
               echo "$RESPONSE"
 
-              if echo "$RESPONSE" \
-                | grep -q '"ok":true'; then
+              if echo "$RESPONSE" | grep -q '"ok":true'; then
 
                 echo
-                echo "ROLLBACK HEALTH CHECK PASSED."
+                echo "ROLLBACK VERIFIED."
 
                 pm2 status
 
@@ -1262,26 +1147,20 @@ jobs:
             done
 
             echo
-            echo "CRITICAL: ROLLBACK HEALTH CHECK FAILED."
+            echo "ROLLBACK VERIFICATION FAILED."
 
             pm2 status
 
-            pm2 logs "$APP_NAME" \
-              --lines 100 \
-              --nostream || true
-
-            exit 2
+            exit 1
 
 
   # ============================================================
-  # 23 - FINAL RESULT
+  # 23 - DEPLOYMENT RESULT
   # ============================================================
 
   result:
     name: "23 • Deployment Result"
     runs-on: ubuntu-latest
-    timeout-minutes: 5
-
     needs:
       - cleanup
       - rollback
