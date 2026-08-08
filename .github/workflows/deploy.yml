@@ -22,8 +22,525 @@ jobs:
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_KEY }}
           port: ${{ secrets.PORT }}
+
           script_stop: true
 
           script: |
-            cd /home/ubuntu/bbcproject/bbc-yangon-news
-            bash scripts/deploy.sh
+            #!/bin/bash
+
+            set -Eeuo pipefail
+
+            PROJECT_DIR="/home/ubuntu/bbcproject/bbc-yangon-news"
+            BACKUP_DIR="$PROJECT_DIR/backups"
+
+            APP_NAME="bbc-yangon-news"
+            HEALTH_URL="https://127.0.0.1:3001/health"
+
+            TIMESTAMP=$(date +"%Y%m%d-%H%M%S")
+            BACKUP_FILE="$BACKUP_DIR/dist-$TIMESTAMP.tar.gz"
+
+            echo "=============================================="
+            echo " BBC YANGON NEWS - CI/CD DEPLOYMENT"
+            echo "=============================================="
+            echo "Started: $(date)"
+            echo
+
+            # --------------------------------------------------
+            # 1. PROJECT DIRECTORY
+            # --------------------------------------------------
+
+            cd "$PROJECT_DIR"
+
+            echo "Current Directory:"
+            pwd
+            echo
+
+            # --------------------------------------------------
+            # 2. GIT SAFE DIRECTORY
+            # --------------------------------------------------
+
+            git config --global --add safe.directory "$PROJECT_DIR"
+
+            # --------------------------------------------------
+            # 3. CHECK PM2
+            # --------------------------------------------------
+
+            echo "Checking PM2..."
+
+            if ! pm2 describe "$APP_NAME" >/dev/null 2>&1; then
+              echo "ERROR: PM2 application '$APP_NAME' not found."
+              exit 1
+            fi
+
+            echo "PM2 application found."
+            echo
+
+            # --------------------------------------------------
+            # 4. CREATE BACKUP
+            # --------------------------------------------------
+
+            echo "=============================================="
+            echo "Creating production backup..."
+            echo "=============================================="
+
+            mkdir -p "$BACKUP_DIR"
+
+            if [ -d "$PROJECT_DIR/dist" ]; then
+
+              tar -czf "$BACKUP_FILE" \
+                -C "$PROJECT_DIR" \
+                dist
+
+              echo "Backup created:"
+              echo "$BACKUP_FILE"
+
+            else
+
+              echo "WARNING: dist directory does not exist."
+              echo "Rollback backup will not be available."
+
+            fi
+
+            echo
+
+            # --------------------------------------------------
+            # 5. UPDATE SOURCE
+            # --------------------------------------------------
+
+            echo "=============================================="
+            echo "Updating source code..."
+            echo "=============================================="
+
+            git fetch origin
+
+            CURRENT_COMMIT=$(git rev-parse HEAD)
+            TARGET_COMMIT=$(git rev-parse origin/main)
+
+            echo "Current commit:"
+            echo "$CURRENT_COMMIT"
+
+            echo
+
+            echo "Target commit:"
+            echo "$TARGET_COMMIT"
+
+            echo
+
+            git reset --hard origin/main
+
+            echo
+
+            # --------------------------------------------------
+            # 6. NODE / PNPM
+            # --------------------------------------------------
+
+            echo "=============================================="
+            echo "Environment"
+            echo "=============================================="
+
+            echo "Node:"
+            node -v
+
+            echo
+
+            echo "PNPM:"
+            pnpm -v
+
+            echo
+
+            # --------------------------------------------------
+            # 7. INSTALL DEPENDENCIES
+            # --------------------------------------------------
+
+            echo "=============================================="
+            echo "Installing dependencies..."
+            echo "=============================================="
+
+            pnpm install --frozen-lockfile
+
+            echo
+
+            # --------------------------------------------------
+            # 8. BUILD
+            # --------------------------------------------------
+
+            echo "=============================================="
+            echo "Building application..."
+            echo "=============================================="
+
+            if ! pnpm run build; then
+
+              echo
+              echo "=============================================="
+              echo "BUILD FAILED"
+              echo "STARTING ROLLBACK"
+              echo "=============================================="
+
+              if [ -f "$BACKUP_FILE" ]; then
+
+                rm -rf "$PROJECT_DIR/dist"
+
+                tar -xzf "$BACKUP_FILE" \
+                  -C "$PROJECT_DIR"
+
+                echo "Previous release restored."
+
+                pm2 reload "$APP_NAME" --update-env
+
+                sleep 3
+
+                if curl -k -fsS \
+                  --max-time 10 \
+                  "$HEALTH_URL" \
+                  | grep -q '"ok":true'; then
+
+                  echo
+                  echo "=============================================="
+                  echo "ROLLBACK SUCCESSFUL"
+                  echo "=============================================="
+
+                else
+
+                  echo
+                  echo "=============================================="
+                  echo "CRITICAL: ROLLBACK HEALTH CHECK FAILED"
+                  echo "=============================================="
+
+                  pm2 status
+                  pm2 logs "$APP_NAME" \
+                    --lines 50 \
+                    --nostream || true
+
+                  exit 2
+
+                fi
+
+              else
+
+                echo "ERROR: No backup available."
+                exit 1
+
+              fi
+
+              exit 1
+            fi
+
+            echo
+            echo "Build successful."
+            echo
+
+            # --------------------------------------------------
+            # 9. VERIFY BUILD
+            # --------------------------------------------------
+
+            echo "Verifying production build..."
+
+            if [ ! -f "$PROJECT_DIR/dist/index.js" ]; then
+
+              echo "ERROR: dist/index.js does not exist."
+
+              if [ -f "$BACKUP_FILE" ]; then
+
+                echo "Restoring previous release..."
+
+                rm -rf "$PROJECT_DIR/dist"
+
+                tar -xzf "$BACKUP_FILE" \
+                  -C "$PROJECT_DIR"
+
+                pm2 reload "$APP_NAME" --update-env
+
+                sleep 3
+
+              fi
+
+              exit 1
+            fi
+
+            echo "Build verification successful."
+            echo
+
+            # --------------------------------------------------
+            # 10. RELOAD PM2
+            # --------------------------------------------------
+
+            echo "=============================================="
+            echo "Reloading PM2..."
+            echo "=============================================="
+
+            if ! pm2 reload "$APP_NAME" --update-env; then
+
+              echo
+              echo "PM2 reload failed."
+              echo "Starting rollback..."
+
+              if [ -f "$BACKUP_FILE" ]; then
+
+                rm -rf "$PROJECT_DIR/dist"
+
+                tar -xzf "$BACKUP_FILE" \
+                  -C "$PROJECT_DIR"
+
+                pm2 reload "$APP_NAME" --update-env
+
+                sleep 3
+
+                if curl -k -fsS \
+                  --max-time 10 \
+                  "$HEALTH_URL" \
+                  | grep -q '"ok":true'; then
+
+                  echo "Rollback successful."
+
+                else
+
+                  echo "CRITICAL: Rollback failed."
+                  exit 2
+
+                fi
+
+              else
+
+                echo "ERROR: No backup available."
+                exit 2
+
+              fi
+
+              exit 1
+            fi
+
+            echo
+
+            # --------------------------------------------------
+            # 11. WAIT FOR APPLICATION
+            # --------------------------------------------------
+
+            echo "Waiting for application startup..."
+
+            sleep 3
+
+            # --------------------------------------------------
+            # 12. HEALTH CHECK
+            # --------------------------------------------------
+
+            echo "=============================================="
+            echo "Running production health check..."
+            echo "=============================================="
+
+            echo "Health URL:"
+            echo "$HEALTH_URL"
+
+            HEALTH_OK=false
+
+            for i in 1 2 3 4 5 6 7 8 9 10
+            do
+
+              echo
+              echo "Health check attempt $i/10..."
+
+              RESPONSE=$(curl \
+                -k \
+                -sS \
+                --max-time 10 \
+                "$HEALTH_URL" \
+                2>/dev/null || true)
+
+              if echo "$RESPONSE" | grep -q '"ok":true'; then
+
+                echo
+                echo "Health check successful."
+                echo "$RESPONSE"
+
+                HEALTH_OK=true
+                break
+
+              fi
+
+              if [ -n "$RESPONSE" ]; then
+                echo "Response:"
+                echo "$RESPONSE"
+              else
+                echo "No response."
+              fi
+
+              sleep 2
+
+            done
+
+            # --------------------------------------------------
+            # 13. DEPLOYMENT SUCCESS
+            # --------------------------------------------------
+
+            if [ "$HEALTH_OK" = true ]; then
+
+              echo
+              echo "=============================================="
+              echo " DEPLOYMENT SUCCESSFUL"
+              echo "=============================================="
+
+              echo "Application:"
+              echo "$APP_NAME"
+
+              echo "Commit:"
+              echo "$TARGET_COMMIT"
+
+              echo "Health:"
+              echo "$HEALTH_URL"
+
+              echo "Completed:"
+              echo "$(date)"
+
+              echo
+
+              # Keep only last 5 backups
+              find "$BACKUP_DIR" \
+                -maxdepth 1 \
+                -type f \
+                -name "dist-*.tar.gz" \
+                -printf "%T@ %p\n" \
+                | sort -nr \
+                | tail -n +6 \
+                | cut -d' ' -f2- \
+                | xargs -r rm -f
+
+              echo "Old backups cleaned."
+
+              exit 0
+            fi
+
+            # --------------------------------------------------
+            # 14. HEALTH CHECK FAILED
+            # --------------------------------------------------
+
+            echo
+            echo "=============================================="
+            echo " HEALTH CHECK FAILED"
+            echo "=============================================="
+
+            echo
+            echo "Current PM2 status:"
+            pm2 status
+
+            echo
+            echo "Starting automatic rollback..."
+
+            # --------------------------------------------------
+            # 15. ROLLBACK
+            # --------------------------------------------------
+
+            if [ -f "$BACKUP_FILE" ]; then
+
+              echo
+              echo "Restoring previous release..."
+
+              rm -rf "$PROJECT_DIR/dist"
+
+              tar -xzf "$BACKUP_FILE" \
+                -C "$PROJECT_DIR"
+
+              echo "Previous release restored."
+
+              echo
+              echo "Reloading previous release..."
+
+              pm2 reload "$APP_NAME" --update-env
+
+              sleep 3
+
+            else
+
+              echo
+              echo "CRITICAL: Backup file not found."
+              echo "Cannot rollback."
+
+              pm2 status
+
+              exit 2
+
+            fi
+
+            # --------------------------------------------------
+            # 16. ROLLBACK HEALTH CHECK
+            # --------------------------------------------------
+
+            echo
+            echo "=============================================="
+            echo "Checking rollback health..."
+            echo "=============================================="
+
+            ROLLBACK_OK=false
+
+            for i in 1 2 3 4 5 6 7 8 9 10
+            do
+
+              echo
+              echo "Rollback health check $i/10..."
+
+              RESPONSE=$(curl \
+                -k \
+                -sS \
+                --max-time 10 \
+                "$HEALTH_URL" \
+                2>/dev/null || true)
+
+              if echo "$RESPONSE" | grep -q '"ok":true'; then
+
+                echo
+                echo "Rollback health check successful."
+                echo "$RESPONSE"
+
+                ROLLBACK_OK=true
+                break
+
+              fi
+
+              sleep 2
+
+            done
+
+            # --------------------------------------------------
+            # 17. ROLLBACK SUCCESS
+            # --------------------------------------------------
+
+            if [ "$ROLLBACK_OK" = true ]; then
+
+              echo
+              echo "=============================================="
+              echo " ROLLBACK COMPLETED"
+              echo "=============================================="
+
+              echo "Previous release is running."
+              echo "Failed commit:"
+              echo "$TARGET_COMMIT"
+
+              echo
+              echo "GitHub Actions will report this deployment as FAILED"
+              echo "because the new release was not healthy."
+
+              exit 1
+
+            fi
+
+            # --------------------------------------------------
+            # 18. CRITICAL FAILURE
+            # --------------------------------------------------
+
+            echo
+            echo "=============================================="
+            echo " CRITICAL DEPLOYMENT FAILURE"
+            echo "=============================================="
+
+            echo "New release is unhealthy."
+            echo "Rollback is also unhealthy."
+
+            echo
+            echo "PM2 status:"
+            pm2 status
+
+            echo
+            echo "PM2 logs:"
+            pm2 logs "$APP_NAME" \
+              --lines 100 \
+              --nostream || true
+
+            exit 2
