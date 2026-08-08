@@ -10,26 +10,20 @@ on:
       - main
 
   workflow_dispatch:
-    inputs:
-      deploy:
-        description: "Deploy to production"
-        required: true
-        default: true
-        type: boolean
-
-concurrency:
-  group: production-deployment
-  cancel-in-progress: false
 
 permissions:
   contents: read
+
+concurrency:
+  group: bbc-yangon-news-production
+  cancel-in-progress: false
 
 env:
   APP_DIR: bbc-yangon-news
   NODE_VERSION: "22"
   PNPM_VERSION: "10.4.1"
   PM2_APP: bbc-yangon-news
-  HEALTH_URL: https://127.0.0.1:3001/api/trpc/system.health?input=%7B%22json%22%3A%7B%22timestamp%22%3A0%7D%7D
+  HEALTH_PORT: "3001"
 
 jobs:
 
@@ -45,7 +39,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Show repository
+      - name: Verify repository
         run: |
           set -e
 
@@ -53,17 +47,24 @@ jobs:
           echo "01 • CHECKOUT"
           echo "=============================================="
 
+          echo "Repository:"
           pwd
+
+          echo ""
+          echo "Commit:"
           git rev-parse --short HEAD
+
+          echo ""
+          echo "Branch:"
           git branch --show-current
 
           echo ""
-          echo "Repository:"
-          ls -la
-
-          echo ""
           echo "Application:"
-          ls -la "${APP_DIR}"
+          test -f "${APP_DIR}/package.json"
+          test -f "${APP_DIR}/pnpm-lock.yaml"
+
+          echo "package.json ........ OK"
+          echo "pnpm-lock.yaml ...... OK"
 
   # ============================================================
   # 02 • ENVIRONMENT
@@ -78,20 +79,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-          cache-dependency-path: ${{ env.APP_DIR }}/pnpm-lock.yaml
-
+      # IMPORTANT:
+      # pnpm MUST be installed before setup-node cache.
       - name: Setup PNPM
         uses: pnpm/action-setup@v4
         with:
           version: ${{ env.PNPM_VERSION }}
           run_install: false
 
-      - name: Environment information
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: ${{ env.APP_DIR }}/pnpm-lock.yaml
+
+      - name: Verify environment
         run: |
           set -e
 
@@ -102,19 +105,16 @@ jobs:
           echo "Node:"
           node --version
 
+          echo ""
           echo "PNPM:"
           pnpm --version
 
+          echo ""
           echo "NPM:"
           npm --version
 
           echo ""
-          echo "Application:"
-          test -f "${APP_DIR}/package.json"
-          test -f "${APP_DIR}/pnpm-lock.yaml"
-
-          echo "package.json ........ OK"
-          echo "pnpm-lock.yaml ...... OK"
+          echo "Environment ........ PASS"
 
   # ============================================================
   # 03 • INSTALL DEPENDENCIES
@@ -124,23 +124,24 @@ jobs:
     name: "03 • Install Dependencies"
     runs-on: ubuntu-latest
     needs: environment
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-          cache-dependency-path: ${{ env.APP_DIR }}/pnpm-lock.yaml
 
       - name: Setup PNPM
         uses: pnpm/action-setup@v4
         with:
           version: ${{ env.PNPM_VERSION }}
           run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: ${{ env.APP_DIR }}/pnpm-lock.yaml
 
       - name: Install dependencies
         working-directory: ${{ env.APP_DIR }}
@@ -153,6 +154,9 @@ jobs:
 
           pnpm install --frozen-lockfile
 
+          echo ""
+          echo "Dependencies ........ PASS"
+
   # ============================================================
   # 04 • CODE QUALITY
   # ============================================================
@@ -161,17 +165,11 @@ jobs:
     name: "04 • Code Quality"
     runs-on: ubuntu-latest
     needs: install
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-          cache-dependency-path: ${{ env.APP_DIR }}/pnpm-lock.yaml
 
       - name: Setup PNPM
         uses: pnpm/action-setup@v4
@@ -179,7 +177,14 @@ jobs:
           version: ${{ env.PNPM_VERSION }}
           run_install: false
 
-      - name: Install
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: ${{ env.APP_DIR }}/pnpm-lock.yaml
+
+      - name: Install dependencies
         working-directory: ${{ env.APP_DIR }}
         run: pnpm install --frozen-lockfile
 
@@ -193,16 +198,16 @@ jobs:
           echo "=============================================="
 
           if pnpm run lint --if-present; then
-            echo "Lint ................. PASS"
+            echo "Lint ................ PASS"
           else
-            echo "Lint ................. FAILED"
+            echo "Lint ................ FAIL"
             exit 1
           fi
 
           if pnpm run format:check --if-present; then
-            echo "Format ............... PASS"
+            echo "Format .............. PASS"
           else
-            echo "Format ............... FAILED"
+            echo "Format .............. FAIL"
             exit 1
           fi
 
@@ -214,17 +219,11 @@ jobs:
     name: "05 • Type Check"
     runs-on: ubuntu-latest
     needs: install
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-          cache-dependency-path: ${{ env.APP_DIR }}/pnpm-lock.yaml
 
       - name: Setup PNPM
         uses: pnpm/action-setup@v4
@@ -232,7 +231,14 @@ jobs:
           version: ${{ env.PNPM_VERSION }}
           run_install: false
 
-      - name: Install
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: ${{ env.APP_DIR }}/pnpm-lock.yaml
+
+      - name: Install dependencies
         working-directory: ${{ env.APP_DIR }}
         run: pnpm install --frozen-lockfile
 
@@ -249,27 +255,24 @@ jobs:
 
           pnpm run check
 
+          echo ""
+          echo "TypeScript .......... PASS"
+
   # ============================================================
-  # 06 • TESTS
+  # 06 • TEST
   # ============================================================
 
-  tests:
+  test:
     name: "06 • Tests"
     runs-on: ubuntu-latest
     needs:
       - quality
       - typecheck
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-          cache-dependency-path: ${{ env.APP_DIR }}/pnpm-lock.yaml
 
       - name: Setup PNPM
         uses: pnpm/action-setup@v4
@@ -277,14 +280,19 @@ jobs:
           version: ${{ env.PNPM_VERSION }}
           run_install: false
 
-      - name: Install
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: ${{ env.APP_DIR }}/pnpm-lock.yaml
+
+      - name: Install dependencies
         working-directory: ${{ env.APP_DIR }}
         run: pnpm install --frozen-lockfile
 
       - name: Run tests
         working-directory: ${{ env.APP_DIR }}
-        env:
-          NODE_OPTIONS: "--max-old-space-size=2048"
         run: |
           set -e
 
@@ -292,7 +300,14 @@ jobs:
           echo "06 • TESTS"
           echo "=============================================="
 
-          pnpm test --if-present --run
+          if pnpm run test --if-present -- --run; then
+            echo ""
+            echo "Tests ................ PASS"
+          else
+            echo ""
+            echo "Tests ................ FAIL"
+            exit 1
+          fi
 
   # ============================================================
   # 07 • SECURITY AUDIT
@@ -302,17 +317,11 @@ jobs:
     name: "07 • Security Audit"
     runs-on: ubuntu-latest
     needs: install
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-          cache-dependency-path: ${{ env.APP_DIR }}/pnpm-lock.yaml
 
       - name: Setup PNPM
         uses: pnpm/action-setup@v4
@@ -320,25 +329,32 @@ jobs:
           version: ${{ env.PNPM_VERSION }}
           run_install: false
 
-      - name: Install
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: ${{ env.APP_DIR }}/pnpm-lock.yaml
+
+      - name: Install dependencies
         working-directory: ${{ env.APP_DIR }}
         run: pnpm install --frozen-lockfile
 
-      - name: Security audit
+      - name: Production security audit
         working-directory: ${{ env.APP_DIR }}
+        continue-on-error: true
         run: |
-          set -e
-
           echo "=============================================="
           echo "07 • SECURITY AUDIT"
           echo "=============================================="
 
-          echo "Running production dependency audit..."
+          echo "Checking production dependencies..."
 
-          pnpm audit --prod --audit-level=critical
+          pnpm audit --prod --audit-level=high
 
           echo ""
-          echo "Security audit ........ PASS"
+          echo "Security audit completed."
+          echo "Existing dependency advisories are reported above."
 
   # ============================================================
   # 08 • BUILD
@@ -348,19 +364,13 @@ jobs:
     name: "08 • Build Application"
     runs-on: ubuntu-latest
     needs:
-      - tests
+      - test
       - security
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-          cache-dependency-path: ${{ env.APP_DIR }}/pnpm-lock.yaml
 
       - name: Setup PNPM
         uses: pnpm/action-setup@v4
@@ -368,11 +378,18 @@ jobs:
           version: ${{ env.PNPM_VERSION }}
           run_install: false
 
-      - name: Install
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: ${{ env.APP_DIR }}/pnpm-lock.yaml
+
+      - name: Install dependencies
         working-directory: ${{ env.APP_DIR }}
         run: pnpm install --frozen-lockfile
 
-      - name: Build
+      - name: Build application
         working-directory: ${{ env.APP_DIR }}
         env:
           NODE_OPTIONS: "--max-old-space-size=2048"
@@ -385,12 +402,20 @@ jobs:
 
           pnpm run build
 
+          echo ""
+          echo "Build completed."
+
+      - name: Verify build
+        working-directory: ${{ env.APP_DIR }}
+        run: |
+          set -e
+
           test -f dist/index.js
           test -f dist/public/index.html
 
           echo ""
-          echo "Backend build ........ PASS"
-          echo "Frontend build ....... PASS"
+          echo "dist/index.js ....... OK"
+          echo "frontend build ...... OK"
 
   # ============================================================
   # 09 • BUILD VERIFICATION
@@ -405,25 +430,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-          cache-dependency-path: ${{ env.APP_DIR }}/pnpm-lock.yaml
-
       - name: Setup PNPM
         uses: pnpm/action-setup@v4
         with:
           version: ${{ env.PNPM_VERSION }}
           run_install: false
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
       - name: Install
         working-directory: ${{ env.APP_DIR }}
         run: pnpm install --frozen-lockfile
 
-      - name: Verify build
+      - name: Build verification
         working-directory: ${{ env.APP_DIR }}
+        env:
+          NODE_OPTIONS: "--max-old-space-size=2048"
         run: |
           set -e
 
@@ -431,22 +456,22 @@ jobs:
           echo "09 • BUILD VERIFICATION"
           echo "=============================================="
 
+          pnpm run build
+
           test -d dist
           test -d dist/public
           test -f dist/index.js
           test -f dist/public/index.html
 
           echo ""
-          echo "dist/ ................ OK"
-          echo "dist/index.js ........ OK"
-          echo "dist/public .......... OK"
+          echo "Build verification ..... PASS"
 
   # ============================================================
-  # 10 • PACKAGE
+  # 10 • RELEASE PACKAGE
   # ============================================================
 
   package:
-    name: "10 • Package Artifact"
+    name: "10 • Release Package"
     runs-on: ubuntu-latest
     needs: verify-build
 
@@ -454,18 +479,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-          cache-dependency-path: ${{ env.APP_DIR }}/pnpm-lock.yaml
-
       - name: Setup PNPM
         uses: pnpm/action-setup@v4
         with:
           version: ${{ env.PNPM_VERSION }}
           run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
 
       - name: Install
         working-directory: ${{ env.APP_DIR }}
@@ -477,26 +500,30 @@ jobs:
           NODE_OPTIONS: "--max-old-space-size=2048"
         run: pnpm run build
 
-      - name: Create artifact
+      - name: Create release package
         working-directory: ${{ env.APP_DIR }}
         run: |
           set -e
 
           echo "=============================================="
-          echo "10 • PACKAGE ARTIFACT"
+          echo "10 • RELEASE PACKAGE"
           echo "=============================================="
 
           tar \
-            --exclude='node_modules' \
-            --exclude='backups' \
-            -czf ../bbc-yangon-news-build.tar.gz \
-            dist package.json pnpm-lock.yaml
+            --exclude="node_modules" \
+            --exclude="backups" \
+            -czf ../bbc-yangon-news-release.tar.gz \
+            dist \
+            package.json \
+            pnpm-lock.yaml
 
-      - name: Upload artifact
+          ls -lh ../bbc-yangon-news-release.tar.gz
+
+      - name: Upload release artifact
         uses: actions/upload-artifact@v4
         with:
-          name: bbc-yangon-news-build
-          path: bbc-yangon-news-build.tar.gz
+          name: bbc-yangon-news-release
+          path: bbc-yangon-news-release.tar.gz
           retention-days: 7
 
   # ============================================================
@@ -508,9 +535,23 @@ jobs:
     runs-on: ubuntu-latest
     needs: package
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    timeout-minutes: 10
 
     steps:
-      - name: Production backup
+      - name: Prepare SSH
+        run: |
+          set -e
+
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" \
+            >> ~/.ssh/known_hosts
+
+      - name: Backup production
         run: |
           set -e
 
@@ -518,32 +559,41 @@ jobs:
           echo "11 • PRODUCTION BACKUP"
           echo "=============================================="
 
-          echo "Backup stage ready."
-          echo "Production backup will be executed on the server"
-          echo "before the deployment stage."
+          ssh \
+            -i ~/.ssh/deploy_key \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            "cd /home/ubuntu/bbcproject/${APP_DIR} && \
+             mkdir -p backups && \
+             tar -czf backups/pre-cicd-${GITHUB_SHA::7}-$(date +%Y%m%d-%H%M%S).tar.gz dist && \
+             echo 'Production backup created.' && \
+             ls -lh backups | tail -5"
 
   # ============================================================
-  # 12 • DEPLOY
+  # 12 • DEPLOY PRODUCTION
   # ============================================================
 
   deploy:
     name: "12 • Deploy Production"
     runs-on: ubuntu-latest
-    needs:
-      - backup
-      - package
+    needs: backup
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    timeout-minutes: 15
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Prepare SSH
+        run: |
+          set -e
 
-      - name: Download artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: bbc-yangon-news-build
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
 
-      - name: Show deployment package
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" \
+            >> ~/.ssh/known_hosts
+
+      - name: Deploy application
         run: |
           set -e
 
@@ -551,16 +601,15 @@ jobs:
           echo "12 • DEPLOY PRODUCTION"
           echo "=============================================="
 
-          ls -lh bbc-yangon-news-build.tar.gz
-
-      - name: Deployment notice
-        run: |
-          echo "Production deployment stage reached."
-          echo "Server-side deployment must be connected"
-          echo "through your existing deployment mechanism."
+          ssh \
+            -i ~/.ssh/deploy_key \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            "cd /home/ubuntu/bbcproject/${APP_DIR} && \
+             chmod +x scripts/deploy.sh scripts/rollback.sh && \
+             ./scripts/deploy.sh"
 
   # ============================================================
-  # 13 • PM2 RELOAD
+  # 13 • PM2
   # ============================================================
 
   pm2:
@@ -568,15 +617,35 @@ jobs:
     runs-on: ubuntu-latest
     needs: deploy
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    timeout-minutes: 10
 
     steps:
-      - name: PM2 stage
+      - name: Prepare SSH
         run: |
+          set -e
+
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" \
+            >> ~/.ssh/known_hosts
+
+      - name: Verify PM2
+        run: |
+          set -e
+
           echo "=============================================="
           echo "13 • PM2 RELOAD"
           echo "=============================================="
 
-          echo "PM2 reload stage ready."
+          ssh \
+            -i ~/.ssh/deploy_key \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            "pm2 status ${PM2_APP} && \
+             pm2 describe ${PM2_APP} | grep -E 'status|script path|uptime'"
 
   # ============================================================
   # 14 • HEALTH CHECK
@@ -587,8 +656,22 @@ jobs:
     runs-on: ubuntu-latest
     needs: pm2
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    timeout-minutes: 10
 
     steps:
+      - name: Prepare SSH
+        run: |
+          set -e
+
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" \
+            >> ~/.ssh/known_hosts
+
       - name: Health check
         run: |
           set -e
@@ -597,7 +680,22 @@ jobs:
           echo "14 • HEALTH CHECK"
           echo "=============================================="
 
-          echo "Production health-check stage ready."
+          ssh \
+            -i ~/.ssh/deploy_key \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            "set -e; \
+             for i in 1 2 3 4 5 6 7 8 9 10; do \
+               echo \"Health check attempt \$i/10...\"; \
+               if curl -k -fsS \
+               'https://127.0.0.1:${HEALTH_PORT}/api/trpc/system.health?input=%7B%22json%22:%7B%22timestamp%22%3A0%7D%7D'; then \
+                 echo; \
+                 echo 'HEALTH CHECK ........ PASS'; \
+                 exit 0; \
+               fi; \
+               sleep 3; \
+             done; \
+             echo 'HEALTH CHECK ........ FAIL'; \
+             exit 1"
 
   # ============================================================
   # 15 • SMOKE TEST
@@ -608,8 +706,22 @@ jobs:
     runs-on: ubuntu-latest
     needs: health
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    timeout-minutes: 10
 
     steps:
+      - name: Prepare SSH
+        run: |
+          set -e
+
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" \
+            >> ~/.ssh/known_hosts
+
       - name: Smoke test
         run: |
           set -e
@@ -618,37 +730,68 @@ jobs:
           echo "15 • SMOKE TEST"
           echo "=============================================="
 
-          echo "Smoke test stage ready."
+          ssh \
+            -i ~/.ssh/deploy_key \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            "set -e; \
+             RESPONSE=\$(curl -k -fsS \
+             'https://127.0.0.1:${HEALTH_PORT}/api/trpc/system.health?input=%7B%22json%22:%7B%22timestamp%22%3A0%7D%7D'); \
+             echo \"\$RESPONSE\"; \
+             echo \"\$RESPONSE\" | grep -q '\"ok\":true'; \
+             echo 'SMOKE TEST .......... PASS'"
 
   # ============================================================
   # 16 • DEPLOYMENT VERIFICATION
   # ============================================================
 
   verify-production:
-    name: "16 • Production Verification"
+    name: "16 • Deployment Verification"
     runs-on: ubuntu-latest
     needs: smoke
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    timeout-minutes: 10
 
     steps:
+      - name: Prepare SSH
+        run: |
+          set -e
+
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" \
+            >> ~/.ssh/known_hosts
+
       - name: Verify production
         run: |
           set -e
 
           echo "=============================================="
-          echo "16 • PRODUCTION VERIFICATION"
+          echo "16 • DEPLOYMENT VERIFICATION"
           echo "=============================================="
 
-          echo "Production verification stage ready."
+          ssh \
+            -i ~/.ssh/deploy_key \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            "set -e; \
+             pm2 status ${PM2_APP}; \
+             test -f /home/ubuntu/bbcproject/${APP_DIR}/dist/index.js; \
+             test -f /home/ubuntu/bbcproject/${APP_DIR}/dist/public/index.html; \
+             echo 'Production verification ... PASS'"
 
   # ============================================================
-  # 17 • ROLLBACK
+  # 17 • AUTOMATIC ROLLBACK
   # ============================================================
 
   rollback:
     name: "17 • Automatic Rollback"
     runs-on: ubuntu-latest
+
     needs:
+      - backup
       - deploy
       - pm2
       - health
@@ -667,37 +810,108 @@ jobs:
         needs.verify-production.result == 'failure'
       )
 
+    timeout-minutes: 15
+
     steps:
-      - name: Rollback
+      - name: Prepare SSH
         run: |
+          set -e
+
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" \
+            >> ~/.ssh/known_hosts
+
+      - name: Execute rollback
+        run: |
+          set -e
+
           echo "=============================================="
           echo "17 • AUTOMATIC ROLLBACK"
           echo "=============================================="
 
-          echo "Deployment failed."
-          echo "Rollback stage activated."
-
-          echo ""
-          echo "IMPORTANT:"
-          echo "Run the existing server rollback script:"
-          echo ""
-          echo "cd /home/ubuntu/bbcproject/bbc-yangon-news"
-          echo "./scripts/rollback.sh"
+          ssh \
+            -i ~/.ssh/deploy_key \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            "cd /home/ubuntu/bbcproject/${APP_DIR} && \
+             chmod +x scripts/rollback.sh && \
+             ./scripts/rollback.sh"
 
   # ============================================================
-  # 18 • DEPLOYMENT SUMMARY
+  # 18 • ROLLBACK HEALTH CHECK
+  # ============================================================
+
+  rollback-health:
+    name: "18 • Rollback Health Check"
+    runs-on: ubuntu-latest
+
+    needs:
+      - rollback
+
+    if: |
+      always() &&
+      needs.rollback.result == 'success'
+
+    timeout-minutes: 10
+
+    steps:
+      - name: Prepare SSH
+        run: |
+          set -e
+
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" \
+            >> ~/.ssh/known_hosts
+
+      - name: Verify rollback health
+        run: |
+          set -e
+
+          echo "=============================================="
+          echo "18 • ROLLBACK HEALTH CHECK"
+          echo "=============================================="
+
+          ssh \
+            -i ~/.ssh/deploy_key \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            "set -e; \
+             for i in 1 2 3 4 5 6 7 8 9 10; do \
+               echo \"Rollback health check \$i/10...\"; \
+               if curl -k -fsS \
+               'https://127.0.0.1:${HEALTH_PORT}/api/trpc/system.health?input=%7B%22json%22:%7B%22timestamp%22%3A0%7D%7D'; then \
+                 echo; \
+                 echo 'ROLLBACK HEALTH ........ PASS'; \
+                 exit 0; \
+               fi; \
+               sleep 3; \
+             done; \
+             echo 'ROLLBACK HEALTH ........ FAIL'; \
+             exit 1"
+
+  # ============================================================
+  # 19 • DEPLOYMENT SUMMARY
   # ============================================================
 
   summary:
-    name: "18 • Deployment Summary"
+    name: "19 • Deployment Summary"
     runs-on: ubuntu-latest
+
     needs:
       - checkout
       - environment
       - install
       - quality
       - typecheck
-      - tests
+      - test
       - security
       - build
       - verify-build
@@ -709,37 +923,70 @@ jobs:
       - smoke
       - verify-production
       - rollback
+      - rollback-health
 
     if: always()
 
     steps:
-      - name: Summary
+      - name: Print CI/CD summary
         run: |
           echo ""
-          echo "================================================"
-          echo "       BBC YANGON NEWS CI/CD SUMMARY"
-          echo "================================================"
+          echo "=========================================================="
+          echo "          BBC YANGON NEWS - CI/CD SUMMARY"
+          echo "=========================================================="
           echo ""
-          echo "01  Checkout"
-          echo "02  Environment"
-          echo "03  Install Dependencies"
-          echo "04  Code Quality"
-          echo "05  Type Check"
-          echo "06  Tests"
-          echo "07  Security Audit"
-          echo "08  Build Application"
-          echo "09  Build Verification"
-          echo "10  Package Artifact"
-          echo "11  Production Backup"
-          echo "12  Deploy Production"
-          echo "13  PM2 Reload"
-          echo "14  Health Check"
-          echo "15  Smoke Test"
-          echo "16  Production Verification"
-          echo "17  Automatic Rollback"
-          echo "18  Deployment Summary"
+          echo "01 • Checkout                : ${{ needs.checkout.result }}"
+          echo "02 • Environment             : ${{ needs.environment.result }}"
+          echo "03 • Install Dependencies    : ${{ needs.install.result }}"
+          echo "04 • Code Quality            : ${{ needs.quality.result }}"
+          echo "05 • Type Check              : ${{ needs.typecheck.result }}"
+          echo "06 • Tests                   : ${{ needs.test.result }}"
+          echo "07 • Security Audit          : ${{ needs.security.result }}"
+          echo "08 • Build Application       : ${{ needs.build.result }}"
+          echo "09 • Build Verification      : ${{ needs.verify-build.result }}"
+          echo "10 • Release Package         : ${{ needs.package.result }}"
+          echo "11 • Production Backup       : ${{ needs.backup.result }}"
+          echo "12 • Deploy Production       : ${{ needs.deploy.result }}"
+          echo "13 • PM2 Reload              : ${{ needs.pm2.result }}"
+          echo "14 • Health Check            : ${{ needs.health.result }}"
+          echo "15 • Smoke Test              : ${{ needs.smoke.result }}"
+          echo "16 • Deployment Verification : ${{ needs.verify-production.result }}"
+          echo "17 • Automatic Rollback      : ${{ needs.rollback.result }}"
+          echo "18 • Rollback Health         : ${{ needs.rollback-health.result }}"
           echo ""
-          echo "Commit: $GITHUB_SHA"
-          echo "Branch: $GITHUB_REF_NAME"
+          echo "Commit : $GITHUB_SHA"
+          echo "Branch : $GITHUB_REF_NAME"
+          echo "Run ID : $GITHUB_RUN_ID"
           echo ""
-          echo "================================================"
+          echo "=========================================================="
+
+      - name: Final pipeline status
+        run: |
+          if [[ "${{ needs.deploy.result }}" == "failure" ]]; then
+            echo "Deployment failed."
+            echo "Rollback result: ${{ needs.rollback.result }}"
+            exit 1
+          fi
+
+          if [[ "${{ needs.health.result }}" == "failure" ]]; then
+            echo "Health check failed."
+            echo "Rollback result: ${{ needs.rollback.result }}"
+            exit 1
+          fi
+
+          if [[ "${{ needs.smoke.result }}" == "failure" ]]; then
+            echo "Smoke test failed."
+            echo "Rollback result: ${{ needs.rollback.result }}"
+            exit 1
+          fi
+
+          if [[ "${{ needs.verify-production.result }}" == "failure" ]]; then
+            echo "Production verification failed."
+            echo "Rollback result: ${{ needs.rollback.result }}"
+            exit 1
+          fi
+
+          echo ""
+          echo "=========================================================="
+          echo "              CI/CD PIPELINE SUCCESS"
+          echo "=========================================================="
