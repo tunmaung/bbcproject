@@ -341,13 +341,17 @@ jobs:
           echo "06 • TESTS"
           echo "=============================================="
 
-          if pnpm run test --if-present -- --run; then
+          if node -e '
+            const pkg = require("./package.json");
+            process.exit(pkg.scripts && pkg.scripts.test ? 0 : 1);
+          '; then
+            pnpm run test
             echo ""
             echo "Tests ................ PASS"
           else
             echo ""
-            echo "Tests ................ FAIL"
-            exit 1
+            echo "No test script found."
+            echo "Tests ................ SKIPPED"
           fi
 
   # ============================================================
