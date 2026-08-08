@@ -154,6 +154,7 @@ const plugins = [react(), tailwindcss(), jsxLocPlugin(), vitePluginManusRuntime(
 
 export default defineConfig({
   plugins,
+
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "client", "src"),
@@ -161,52 +162,43 @@ export default defineConfig({
       "@assets": path.resolve(import.meta.dirname, "attached_assets"),
     },
   },
+
   envDir: path.resolve(import.meta.dirname),
+
   root: path.resolve(import.meta.dirname, "client"),
-  publicDir: path.resolve(import.meta.dirname, "client", "public"),
+
+  publicDir: path.resolve(
+    import.meta.dirname,
+    "client",
+    "public"
+  ),
+
+  server: {
+    host: "0.0.0.0",
+    port: 3000,
+
+    allowedHosts: [
+      ".manuspre.computer",
+      ".manus.computer",
+      ".manus-asia.computer",
+      ".manuscomputer.ai",
+      ".manusvm.computer",
+      "localhost",
+      "127.0.0.1",
+      "192.168.1.10",
+    ],
+
+    fs: {
+      strict: true,
+      deny: ["**/.*"],
+    },
+  },
+
   build: {
-    outDir: path.resolve(import.meta.dirname, "dist/public"),
+    outDir: path.resolve(
+      import.meta.dirname,
+      "dist/public"
+    ),
     emptyOutDir: true,
   },
-
-server: {
-  host: "0.0.0.0",
-  port: 3000,
-
-server: {
-  host: "0.0.0.0",
-  port: 3000,
-
-  allowedHosts: [
-    ".manuspre.computer",
-    ".manus.computer",
-    ".manus-asia.computer",
-    ".manuscomputer.ai",
-    ".manusvm.computer",
-    "localhost",
-    "127.0.0.1",
-    "192.168.1.10",
-  ],
-
-  fs: {
-    strict: true,
-    deny: ["**/.*"],
-  },
-},
-  allowedHosts: [
-    ".manuspre.computer",
-    ".manus.computer",
-    ".manus-asia.computer",
-    ".manuscomputer.ai",
-    ".manusvm.computer",
-    "localhost",
-    "127.0.0.1",
-    "192.168.1.10",
-  ],
-
-  fs: {
-    strict: true,
-    deny: ["**/.*"],
-  },
-},
 });

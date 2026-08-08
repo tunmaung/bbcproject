@@ -17,7 +17,12 @@ onSuccess(data) {
     return;
   }
 
-  localStorage.setItem("admin_token", data.token);
+  if (!data.token) {
+  alert("Login failed: authentication token was not returned.");
+  return;
+}
+
+localStorage.setItem("admin_token", data.token);
   localStorage.setItem("admin_user", JSON.stringify(data.admin));
 
   navigate("/admin");
@@ -34,7 +39,7 @@ onSuccess(data) {
 login.mutate({
   username,
   password,
-  token,
+  token: token || undefined,
 });
   };
 
