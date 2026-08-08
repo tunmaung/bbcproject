@@ -600,17 +600,60 @@ jobs:
 
     steps:
       - name: Prepare SSH
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
         run: |
-          set -e
+          set -euo pipefail
+
+          echo "=============================================="
+          echo "PREPARE SSH"
+          echo "=============================================="
+
+          test -n "$DEPLOY_HOST" || {
+            echo "ERROR: DEPLOY_HOST secret is empty."
+            exit 1
+          }
+
+          test -n "$DEPLOY_USER" || {
+            echo "ERROR: DEPLOY_USER secret is empty."
+            exit 1
+          }
+
+          test -n "$DEPLOY_SSH_KEY" || {
+            echo "ERROR: DEPLOY_SSH_KEY secret is empty."
+            exit 1
+          }
+
+          echo "DEPLOY_HOST .... OK"
+          echo "DEPLOY_USER .... OK"
+          echo "DEPLOY_SSH_KEY . OK"
 
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
 
-          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
 
-          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" \
-            >> ~/.ssh/known_hosts
+          echo "Testing SSH port 22..."
+
+          if ! timeout 10 bash -c "</dev/tcp/$DEPLOY_HOST/22" 2>/dev/null; then
+            echo "ERROR: Cannot reach $DEPLOY_HOST:22"
+            echo "Check AWS Security Group inbound TCP/22."
+            exit 1
+          fi
+
+          echo "SSH port 22 ........ reachable"
+
+          echo "Collecting SSH host key..."
+
+          ssh-keyscan -T 10 -H "$DEPLOY_HOST"             >> ~/.ssh/known_hosts
+
+          chmod 644 ~/.ssh/known_hosts
+
+          echo "SSH preparation .... PASS"
 
       - name: Create Production Backup
         run: |
