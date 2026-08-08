@@ -36,9 +36,10 @@ jobs:
     timeout-minutes: 5
 
     steps:
-
-      - name: Check workflow environment
+      - name: Check runner
         run: |
+          set -e
+
           echo "=============================================="
           echo "01 • PREFLIGHT"
           echo "=============================================="
@@ -56,11 +57,11 @@ jobs:
 
           echo
           echo "Commit:"
-          echo "${GITHUB_SHA}"
+          echo "$GITHUB_SHA"
 
           echo
           echo "Branch:"
-          echo "${GITHUB_REF_NAME}"
+          echo "$GITHUB_REF_NAME"
 
           echo
           echo "Preflight passed."
@@ -77,12 +78,13 @@ jobs:
     needs: preflight
 
     steps:
-
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Verify source
         run: |
+          set -e
+
           echo "=============================================="
           echo "02 • SOURCE CHECKOUT"
           echo "=============================================="
@@ -109,15 +111,8 @@ jobs:
     needs: checkout
 
     steps:
-
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
 
       - name: Setup PNPM
         uses: pnpm/action-setup@v4
@@ -125,8 +120,30 @@ jobs:
           version: ${{ env.PNPM_VERSION }}
           run_install: false
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Verify runtime
+        run: |
+          set -e
+
+          echo "=============================================="
+          echo "03 • RUNTIME"
+          echo "=============================================="
+
+          echo "Node:"
+          node -v
+
+          echo
+          echo "PNPM:"
+          pnpm -v
+
       - name: Install dependencies
         run: |
+          set -e
+
           echo "=============================================="
           echo "03 • INSTALL DEPENDENCIES"
           echo "=============================================="
@@ -134,7 +151,7 @@ jobs:
           pnpm install --frozen-lockfile
 
           echo
-          echo "Dependencies installed."
+          echo "Dependencies installed successfully."
 
 
   # ============================================================
@@ -148,15 +165,8 @@ jobs:
     needs: install
 
     steps:
-
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
 
       - name: Setup PNPM
         uses: pnpm/action-setup@v4
@@ -164,11 +174,18 @@ jobs:
           version: ${{ env.PNPM_VERSION }}
           run_install: false
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
       - name: Install
         run: pnpm install --frozen-lockfile
 
       - name: Code quality
         run: |
+          set -e
+
           echo "=============================================="
           echo "04 • CODE QUALITY"
           echo "=============================================="
@@ -190,15 +207,8 @@ jobs:
     needs: quality
 
     steps:
-
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
 
       - name: Setup PNPM
         uses: pnpm/action-setup@v4
@@ -206,11 +216,18 @@ jobs:
           version: ${{ env.PNPM_VERSION }}
           run_install: false
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
       - name: Install
         run: pnpm install --frozen-lockfile
 
       - name: TypeScript validation
         run: |
+          set -e
+
           echo "=============================================="
           echo "05 • TYPE CHECK"
           echo "=============================================="
@@ -232,15 +249,8 @@ jobs:
     needs: typecheck
 
     steps:
-
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
 
       - name: Setup PNPM
         uses: pnpm/action-setup@v4
@@ -248,11 +258,18 @@ jobs:
           version: ${{ env.PNPM_VERSION }}
           run_install: false
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
       - name: Install
         run: pnpm install --frozen-lockfile
 
       - name: Run tests
         run: |
+          set -e
+
           echo "=============================================="
           echo "06 • TEST SUITE"
           echo "=============================================="
@@ -260,24 +277,27 @@ jobs:
           if find . \
             -path ./node_modules -prune -o \
             -type f \
-            \( -name "*.test.ts" \
-            -o -name "*.test.tsx" \
-            -o -name "*.spec.ts" \
-            -o -name "*.spec.tsx" \) \
+            \( \
+              -name "*.test.ts" \
+              -o -name "*.test.tsx" \
+              -o -name "*.spec.ts" \
+              -o -name "*.spec.tsx" \
+            \) \
             | grep -q .; then
 
+            echo "Test files found."
             pnpm test
 
           else
 
             echo "No automated test files found."
-            echo "Test stage completed with no test suite."
+            echo "Test stage completed."
 
           fi
 
 
   # ============================================================
-  # 07 - SECURITY AUDIT
+  # 07 - SECURITY
   # ============================================================
 
   security:
@@ -287,15 +307,8 @@ jobs:
     needs: tests
 
     steps:
-
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
 
       - name: Setup PNPM
         uses: pnpm/action-setup@v4
@@ -303,11 +316,18 @@ jobs:
           version: ${{ env.PNPM_VERSION }}
           run_install: false
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
       - name: Install
         run: pnpm install --frozen-lockfile
 
       - name: Security audit
         run: |
+          set -e
+
           echo "=============================================="
           echo "07 • SECURITY AUDIT"
           echo "=============================================="
@@ -319,7 +339,7 @@ jobs:
 
 
   # ============================================================
-  # 08 - PRODUCTION BUILD
+  # 08 - BUILD
   # ============================================================
 
   build:
@@ -329,15 +349,8 @@ jobs:
     needs: security
 
     steps:
-
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
 
       - name: Setup PNPM
         uses: pnpm/action-setup@v4
@@ -345,11 +358,18 @@ jobs:
           version: ${{ env.PNPM_VERSION }}
           run_install: false
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
       - name: Install
         run: pnpm install --frozen-lockfile
 
-      - name: Build
+      - name: Build application
         run: |
+          set -e
+
           echo "=============================================="
           echo "08 • PRODUCTION BUILD"
           echo "=============================================="
@@ -359,11 +379,23 @@ jobs:
           echo
           echo "Build completed."
 
-      - name: Package release
+      - name: Verify build files
         run: |
+          set -e
+
+          test -f dist/index.js
+          test -d dist/public
+
+          echo "Build output verified."
+
+      - name: Create release package
+        run: |
+          set -e
+
           tar -czf bbc-yangon-news-release.tar.gz dist
 
-          sha256sum bbc-yangon-news-release.tar.gz \
+          sha256sum \
+            bbc-yangon-news-release.tar.gz \
             > bbc-yangon-news-release.sha256
 
           echo
@@ -393,7 +425,6 @@ jobs:
     needs: build
 
     steps:
-
       - name: Download artifact
         uses: actions/download-artifact@v4
         with:
@@ -401,6 +432,8 @@ jobs:
 
       - name: Verify checksum
         run: |
+          set -e
+
           echo "=============================================="
           echo "09 • ARTIFACT VERIFICATION"
           echo "=============================================="
@@ -409,14 +442,18 @@ jobs:
             bbc-yangon-news-release.sha256
 
           echo
-          echo "Artifact checksum verified."
+          echo "Checksum verified."
 
       - name: Verify archive
         run: |
-          tar -tzf bbc-yangon-news-release.tar.gz \
+          set -e
+
+          tar -tzf \
+            bbc-yangon-news-release.tar.gz \
             | grep -q "^dist/"
 
-          echo "Release archive verified."
+          echo
+          echo "Archive verified."
 
 
   # ============================================================
@@ -430,7 +467,6 @@ jobs:
     needs: artifact_verify
 
     steps:
-
       - name: Check production server
         uses: appleboy/ssh-action@v1.2.2
         with:
@@ -442,6 +478,9 @@ jobs:
 
           script: |
             set -e
+
+            PROJECT_DIR="/home/ubuntu/bbcproject/bbc-yangon-news"
+            APP_NAME="bbc-yangon-news"
 
             echo "=============================================="
             echo "10 • SERVER PREFLIGHT"
@@ -479,7 +518,7 @@ jobs:
 
 
   # ============================================================
-  # 11 - PRODUCTION BACKUP
+  # 11 - BACKUP
   # ============================================================
 
   backup:
@@ -489,8 +528,7 @@ jobs:
     needs: server_preflight
 
     steps:
-
-      - name: Backup current release
+      - name: Create production backup
         uses: appleboy/ssh-action@v1.2.2
         with:
           host: ${{ secrets.HOST }}
@@ -501,6 +539,9 @@ jobs:
 
           script: |
             set -e
+
+            PROJECT_DIR="/home/ubuntu/bbcproject/bbc-yangon-news"
+            BACKUP_DIR="/home/ubuntu/bbcproject/bbc-yangon-news/backups"
 
             mkdir -p "$BACKUP_DIR"
 
@@ -514,7 +555,8 @@ jobs:
 
               BACKUP_FILE="$BACKUP_DIR/dist-$TIMESTAMP.tar.gz"
 
-              tar -czf "$BACKUP_FILE" \
+              tar -czf \
+                "$BACKUP_FILE" \
                 -C "$PROJECT_DIR" \
                 dist
 
@@ -535,7 +577,7 @@ jobs:
 
 
   # ============================================================
-  # 12 - SOURCE SYNCHRONIZATION
+  # 12 - SOURCE SYNC
   # ============================================================
 
   source_sync:
@@ -545,7 +587,6 @@ jobs:
     needs: backup
 
     steps:
-
       - name: Sync source
         uses: appleboy/ssh-action@v1.2.2
         with:
@@ -557,6 +598,8 @@ jobs:
 
           script: |
             set -e
+
+            PROJECT_DIR="/home/ubuntu/bbcproject/bbc-yangon-news"
 
             cd "$PROJECT_DIR"
 
@@ -590,8 +633,7 @@ jobs:
     needs: source_sync
 
     steps:
-
-      - name: Install production dependencies
+      - name: Install runtime dependencies
         uses: appleboy/ssh-action@v1.2.2
         with:
           host: ${{ secrets.HOST }}
@@ -602,6 +644,8 @@ jobs:
 
           script: |
             set -e
+
+            PROJECT_DIR="/home/ubuntu/bbcproject/bbc-yangon-news"
 
             cd "$PROJECT_DIR"
 
@@ -628,8 +672,7 @@ jobs:
     needs: runtime
 
     steps:
-
-      - name: Prepare deployment window
+      - name: Prepare release
         uses: appleboy/ssh-action@v1.2.2
         with:
           host: ${{ secrets.HOST }}
@@ -640,6 +683,8 @@ jobs:
 
           script: |
             set -e
+
+            PROJECT_DIR="/home/ubuntu/bbcproject/bbc-yangon-news"
 
             cd "$PROJECT_DIR"
 
@@ -670,13 +715,12 @@ jobs:
     needs: release_prepare
 
     steps:
-
       - name: Download release artifact
         uses: actions/download-artifact@v4
         with:
           name: bbc-yangon-news-release
 
-      - name: Upload release to server
+      - name: Upload release
         uses: appleboy/scp-action@v1.0.0
         with:
           host: ${{ secrets.HOST }}
@@ -690,7 +734,7 @@ jobs:
 
           target: /home/ubuntu/bbcproject/bbc-yangon-news/.cicd/incoming
 
-      - name: Verify and install artifact
+      - name: Install release
         uses: appleboy/ssh-action@v1.2.2
         with:
           host: ${{ secrets.HOST }}
@@ -702,13 +746,13 @@ jobs:
           script: |
             set -e
 
-            cd "$PROJECT_DIR"
+            PROJECT_DIR="/home/ubuntu/bbcproject/bbc-yangon-news"
+
+            cd "$PROJECT_DIR/.cicd/incoming"
 
             echo "=============================================="
             echo "15 • ARTIFACT DEPLOYMENT"
             echo "=============================================="
-
-            cd .cicd/incoming
 
             echo
             echo "Verifying checksum..."
@@ -731,14 +775,16 @@ jobs:
               "$PROJECT_DIR/.cicd/new-dist/dist/index.js"
 
             echo
-            echo "Installing release atomically..."
+            echo "Moving current release..."
 
             rm -rf "$PROJECT_DIR/.cicd/previous-dist"
 
             if [ -d "$PROJECT_DIR/dist" ]; then
+
               mv \
                 "$PROJECT_DIR/dist" \
                 "$PROJECT_DIR/.cicd/previous-dist"
+
             fi
 
             mv \
@@ -760,8 +806,7 @@ jobs:
     needs: artifact_deploy
 
     steps:
-
-      - name: Reload application
+      - name: Reload PM2
         uses: appleboy/ssh-action@v1.2.2
         with:
           host: ${{ secrets.HOST }}
@@ -772,6 +817,8 @@ jobs:
 
           script: |
             set -e
+
+            APP_NAME="bbc-yangon-news"
 
             echo "=============================================="
             echo "16 • PM2 RELOAD"
@@ -801,7 +848,6 @@ jobs:
     needs: pm2_reload
 
     steps:
-
       - name: Smoke test
         uses: appleboy/ssh-action@v1.2.2
         with:
@@ -814,6 +860,8 @@ jobs:
           script: |
             set -e
 
+            HEALTH_URL="https://127.0.0.1:3001/health"
+
             echo "=============================================="
             echo "17 • SMOKE TEST"
             echo "=============================================="
@@ -824,6 +872,8 @@ jobs:
               --max-time 10 \
               "$HEALTH_URL")
 
+            echo
+            echo "Response:"
             echo "$RESPONSE"
 
             echo "$RESPONSE" \
@@ -844,8 +894,7 @@ jobs:
     needs: smoke
 
     steps:
-
-      - name: Production health check
+      - name: Health check
         uses: appleboy/ssh-action@v1.2.2
         with:
           host: ${{ secrets.HOST }}
@@ -856,6 +905,8 @@ jobs:
 
           script: |
             set -e
+
+            HEALTH_URL="https://127.0.0.1:3001/health"
 
             echo "=============================================="
             echo "18 • HEALTH CHECK"
@@ -907,7 +958,6 @@ jobs:
     needs: health
 
     steps:
-
       - name: Verify production
         uses: appleboy/ssh-action@v1.2.2
         with:
@@ -920,6 +970,9 @@ jobs:
           script: |
             set -e
 
+            APP_NAME="bbc-yangon-news"
+            HEALTH_URL="https://127.0.0.1:3001/health"
+
             echo "=============================================="
             echo "19 • PRODUCTION VERIFICATION"
             echo "=============================================="
@@ -929,7 +982,12 @@ jobs:
             pm2 status
 
             echo
-            echo "Port:"
+            echo "Application:"
+            pm2 describe "$APP_NAME"
+
+            echo
+            echo "Ports:"
+
             sudo ss -lntp \
               | grep -E ':3000|:3001|:3002' \
               || true
@@ -959,7 +1017,6 @@ jobs:
     needs: production_verify
 
     steps:
-
       - name: Cleanup deployment files
         uses: appleboy/ssh-action@v1.2.2
         with:
@@ -972,13 +1029,17 @@ jobs:
           script: |
             set -e
 
+            PROJECT_DIR="/home/ubuntu/bbcproject/bbc-yangon-news"
+            BACKUP_DIR="/home/ubuntu/bbcproject/bbc-yangon-news/backups"
+
+            cd "$PROJECT_DIR"
+
             echo "=============================================="
             echo "20 • CLEANUP"
             echo "=============================================="
 
-            cd "$PROJECT_DIR"
-
             rm -rf .cicd/previous-dist
+            rm -rf .cicd/new-dist
 
             rm -f \
               .cicd/incoming/bbc-yangon-news-release.tar.gz \
@@ -1000,11 +1061,16 @@ jobs:
               | xargs -r rm -f
 
             echo
+            echo "Remaining backups:"
+
+            ls -lh "$BACKUP_DIR" || true
+
+            echo
             echo "Cleanup completed."
 
 
   # ============================================================
-  # 21 - ROLLBACK
+  # 21 - AUTOMATIC ROLLBACK
   # ============================================================
 
   rollback:
@@ -1023,17 +1089,17 @@ jobs:
 
     if: |
       always() &&
+      !cancelled() &&
       needs.release_prepare.result == 'success' &&
       (
-        needs.artifact_deploy.result != 'success' ||
-        needs.pm2_reload.result != 'success' ||
-        needs.smoke.result != 'success' ||
-        needs.health.result != 'success' ||
-        needs.production_verify.result != 'success'
+        needs.artifact_deploy.result == 'failure' ||
+        needs.pm2_reload.result == 'failure' ||
+        needs.smoke.result == 'failure' ||
+        needs.health.result == 'failure' ||
+        needs.production_verify.result == 'failure'
       )
 
     steps:
-
       - name: Restore previous release
         uses: appleboy/ssh-action@v1.2.2
         with:
@@ -1045,6 +1111,10 @@ jobs:
 
           script: |
             set -Eeuo pipefail
+
+            PROJECT_DIR="/home/ubuntu/bbcproject/bbc-yangon-news"
+            BACKUP_DIR="/home/ubuntu/bbcproject/bbc-yangon-news/backups"
+            APP_NAME="bbc-yangon-news"
 
             cd "$PROJECT_DIR"
 
@@ -1066,6 +1136,7 @@ jobs:
 
             if [ -z "$BACKUP" ]; then
 
+              echo
               echo "CRITICAL: No backup found."
 
               exit 2
@@ -1077,13 +1148,18 @@ jobs:
             echo "$BACKUP"
 
             echo
-            echo "Restoring previous dist..."
+            echo "Removing failed release..."
 
             rm -rf "$PROJECT_DIR/dist"
+
+            echo
+            echo "Restoring previous release..."
 
             tar -xzf \
               "$BACKUP" \
               -C "$PROJECT_DIR"
+
+            test -f "$PROJECT_DIR/dist/index.js"
 
             echo
             echo "Reloading PM2..."
@@ -1093,20 +1169,7 @@ jobs:
             sleep 5
 
             echo
-            echo "Rollback initiated."
-
-      - name: Mark rollback state
-        uses: appleboy/ssh-action@v1.2.2
-        with:
-          host: ${{ secrets.HOST }}
-          username: ${{ secrets.USERNAME }}
-          key: ${{ secrets.SSH_KEY }}
-          port: ${{ secrets.PORT }}
-          script_stop: true
-
-          script: |
-            echo "rollback-ready" \
-              > "$PROJECT_DIR/.cicd/rollback-state"
+            echo "Rollback completed."
 
 
   # ============================================================
@@ -1120,10 +1183,11 @@ jobs:
 
     needs: rollback
 
-    if: always() && needs.rollback.result == 'success'
+    if: |
+      always() &&
+      needs.rollback.result == 'success'
 
     steps:
-
       - name: Verify rollback
         uses: appleboy/ssh-action@v1.2.2
         with:
@@ -1135,6 +1199,9 @@ jobs:
 
           script: |
             set -e
+
+            HEALTH_URL="https://127.0.0.1:3001/health"
+            APP_NAME="bbc-yangon-news"
 
             echo "=============================================="
             echo "22 • ROLLBACK VERIFICATION"
@@ -1161,6 +1228,8 @@ jobs:
                 echo
                 echo "ROLLBACK HEALTH CHECK PASSED."
 
+                pm2 status
+
                 exit 0
 
               fi
@@ -1182,7 +1251,7 @@ jobs:
 
 
   # ============================================================
-  # 23 - DEPLOYMENT RESULT
+  # 23 - FINAL RESULT
   # ============================================================
 
   result:
@@ -1192,13 +1261,13 @@ jobs:
 
     needs:
       - cleanup
+      - rollback
       - rollback_verify
 
     if: always()
 
     steps:
-
-      - name: Final deployment result
+      - name: Final result
         run: |
           echo "=============================================="
           echo "23 • DEPLOYMENT RESULT"
@@ -1209,7 +1278,11 @@ jobs:
           echo "${{ needs.cleanup.result }}"
 
           echo
-          echo "Rollback verification:"
+          echo "Rollback:"
+          echo "${{ needs.rollback.result }}"
+
+          echo
+          echo "Rollback Verification:"
           echo "${{ needs.rollback_verify.result }}"
 
           if [ "${{ needs.cleanup.result }}" = "success" ]; then
